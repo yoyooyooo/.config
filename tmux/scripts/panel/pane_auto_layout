@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# desc: 递归等分当前 window 的 panes（保留分屏拓扑）
+# usage: 在 M-p 面板选择；会对触发 pane 所在 window 执行
+# note: 原理：对 window 内每个 pane 反复执行 `tmux select-layout -E`，直到布局稳定
+# note: 可选：`TMUX_PANE_AUTO_LAYOUT_MAX_ROUNDS=8`（默认 8）控制最多迭代轮数
+set -euo pipefail
+
+pause() {
+  read -r -n 1 -s -p "按任意键关闭..." || true
+  printf '\n'
+}
+
+die() {
+  printf '%s\n' "$1"
+  pause
+  exit 0
+}
+
+require_cmd() {
+  local name="$1"
+  command -v "$name" >/dev/null 2>&1
+}
+
+target_pane="${ORIGIN_PANE_ID:-}"
+if [[ -z "${target_pane:-}" ]]; then
+  die "缺少 ORIGIN_PANE_ID：请从 M-p 脚本面板启动，或手动设置 ORIGIN_PANE_ID=%xx。"
+fi
+if [[ "$target_pane" != %* || "$target_pane" == *"#{"* ]]; then
+  die "ORIGIN_PANE_ID 看起来不是有效 pane_id（期望形如 %85），当前值：${target_pane}"
+fi
+
+if ! require_cmd tmux; then
+  die "找不到 tmux。"
+fi
+
+if ! tmux display-message -p -t "$target_pane" '#{pane_id}' >/dev/null 2>&1; then
+  die "pane 不存在：${target_pane}"
+fi
+
+target_window="$(tmux display-message -p -t "$target_pane" '#{window_id}' 2>/dev/null || true)"
+if [[ -z "${target_window:-}" || "$target_window" == *"#{"* ]]; then
+  die "无法解析 window_id（pane=${target_pane}）。"
+fi
+
+pane_count="$(tmux display-message -p -t "$target_pane" '#{window_panes}' 2>/dev/null || true)"
+if [[ -z "${pane_count:-}" ]]; then
+  die "无法解析 window_panes（window=${target_window}）。"
+fi
+if ((pane_count <= 1)); then
+  exit 0
+fi
+
+max_rounds="${TMUX_PANE_AUTO_LAYOUT_MAX_ROUNDS:-8}"
+round=1
+while ((round <= max_rounds)); do
+  before="$(tmux display-message -p -t "$target_pane" '#{window_layout}' 2>/dev/null || true)"
+  panes="$(tmux list-panes -t "$target_window" -F '#{pane_id}' 2>/dev/null || true)"
+
+  if [[ -z "${panes:-}" ]]; then
+    break
+  fi
+
+  while IFS= read -r pane; do
+    [[ -n "${pane:-}" ]] || continue
+    tmux select-layout -E -t "$pane" >/dev/null 2>&1 || true
+  done <<<"$panes"
+
+  after="$(tmux display-message -p -t "$target_pane" '#{window_layout}' 2>/dev/null || true)"
+  if [[ -n "${before:-}" && "${after:-}" == "$before" ]]; then
+    break
+  fi
+
+  round=$((round + 1))
+done

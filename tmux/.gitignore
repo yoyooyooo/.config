@@ -1,0 +1,21 @@
+# Runtime/state
+/run/
+
+# Local caches / snapshots
+/backups/
+*.bak
+*.bak-*
+tmux.conf.bak-*
+
+# TPM managed plugins (reproducible via `prefix + F`)
+/plugins/
+
+# User-private overrides / machine-local scripts
+/local/
+
+# Python caches
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
