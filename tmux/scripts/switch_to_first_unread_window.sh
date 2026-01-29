@@ -22,33 +22,30 @@ tmux_switch() {
   fi
 }
 
-IFS=$'\t' read -r session_id session_alerts current_window_index < <(
-  tmux_display $'#{session_id}\t#{session_alerts}\t#{window_index}'
+IFS=$'\t' read -r session_id current_window_index < <(
+  tmux_display $'#{session_id}\t#{window_index}'
 )
 
 [[ -z "${session_id}" ]] && exit 0
-[[ -z "${session_alerts}" ]] && exit 0
 
-declare -A seen=()
-min_idx=0
-found=0
+min_idx="$(
+  tmux list-windows -t "${session_id}" -F $'#{window_index}\t#{window_id}\t#{?#{==:#{@unread_activity},1},1,0}\t#{window_activity_flag}\t#{window_bell_flag}\t#{window_silence_flag}' 2>/dev/null \
+    | sort -n -k1,1 \
+    | while IFS=$'\t' read -r win_index win_id custom_unread tmux_activity bell silence; do
+        if [[ "${custom_unread:-0}" != "1" && "${tmux_activity:-0}" != "1" && "${bell:-0}" != "1" && "${silence:-0}" != "1" ]]; then
+          continue
+        fi
+        if [[ "${custom_unread:-0}" != "1" && "${tmux_activity:-0}" == "1" ]]; then
+          if ~/.config/tmux/scripts/window_is_ignored.sh "${win_id}" >/dev/null 2>&1; then
+            continue
+          fi
+        fi
+        printf '%s\n' "${win_index}"
+        break
+      done
+)"
 
-IFS=',' read -r -a parts <<<"${session_alerts}"
-for part in "${parts[@]}"; do
-  part="${part//[[:space:]]/}"
-  idx="${part%%[^0-9]*}"
-  [[ -z "${idx}" ]] && continue
-  [[ "${idx}" =~ ^[0-9]+$ ]] || continue
-  if [[ -z "${seen[$idx]+x}" ]]; then
-    seen[$idx]=1
-    if (( found == 0 || idx < min_idx )); then
-      min_idx=$idx
-      found=1
-    fi
-  fi
-done
-
-(( found == 0 )) && exit 0
+[[ -z "${min_idx:-}" ]] && exit 0
 
 if [[ "${current_window_index:-}" =~ ^[0-9]+$ && "${min_idx}" == "${current_window_index}" ]]; then
   exit 0

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # desc: Codex prompts 双栏浏览（左筛文件路径，右侧全文检索/卡片；Enter 粘贴）
-# usage: ORIGIN_PANE_ID=<pane_id> [CODEX_PROMPTS_DIR=~/.codex/prompts] bash ~/.config/tmux/extensions/codex/scripts/panel/codex_prompts_browser.sh
+# usage: ORIGIN_PANE_ID=<pane_id> [CODEX_PROMPTS_DIR=~/.codex/prompts] bash ~/.config/tmux/scripts/panel/codex_prompts_browser.sh
 # keys:
 #   Left:  Tab=Fixed/Regex  Enter=粘贴并关闭  Esc/C-c=关闭
 #   Right: Tab=Fixed/Regex  Enter=从卡片进入文件预览  Esc=清空搜索/解除锁定  C-r=刷新

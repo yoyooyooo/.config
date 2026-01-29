@@ -61,7 +61,7 @@ def sanitize_label(label: str) -> str:
 
 
 def apply_order(ordered_sessions: List[Dict[str, object]]) -> None:
-    for position, session in enumerate(ordered_sessions, start=0):
+    for position, session in enumerate(ordered_sessions, start=1):
         label = sanitize_label(str(session["label"]))
         new_name = f"{position}-{label}"
         run_tmux(["rename-session", "-t", session["id"], new_name])
@@ -124,12 +124,12 @@ def command_switch(index_str: str) -> None:
         index = int(index_str)
     except ValueError:
         return
-    if index < 0:
+    if index < 1:
         return
     sessions = list_sessions()
-    if index >= len(sessions):
+    if index > len(sessions):
         return
-    run_tmux(["switch-client", "-t", sessions[index]["id"]], check=False)
+    run_tmux(["switch-client", "-t", sessions[index - 1]["id"]], check=False)
     run_tmux(["refresh-client", "-S"], check=False)
 
 
@@ -180,12 +180,12 @@ def command_move_window_to_session(index_str: str, client: str | None = None) ->
         index = int(index_str)
     except ValueError:
         return
-    if index < 0:
+    if index < 1:
         return
     sessions = list_sessions()
-    if index >= len(sessions):
+    if index > len(sessions):
         return
-    target_session_id = sessions[index]["id"]
+    target_session_id = sessions[index - 1]["id"]
     source_window_id = current_window_id(client)
     if not source_window_id:
         return

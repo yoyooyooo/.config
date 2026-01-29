@@ -4,6 +4,11 @@
 # keys: Enter toggle | Ctrl-e enable | Ctrl-d disable | Ctrl-r reload | Tab multi
 set -euo pipefail
 
+# shellcheck disable=SC1090
+if [[ -f "$HOME/.config/tmux/scripts/lib/tmux_kit_proxy.sh" ]]; then
+  source "$HOME/.config/tmux/scripts/lib/tmux_kit_proxy.sh"
+fi
+
 self="${BASH_SOURCE[0]}"
 enabled_dir="${CODEX_SKILLS_DIR:-$HOME/.codex/skills}"
 disabled_dir="${AGENTS_SKILLS_DIR:-$HOME/.agents/skills}"
@@ -316,3 +321,4 @@ case "$cmd" in
     run_fzf
     ;;
 esac
+

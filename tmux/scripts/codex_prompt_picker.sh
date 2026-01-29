@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # desc: fzf 选择 Codex prompts（~/.codex/prompts/*.md），右侧 bat 预览，回车后粘贴到触发的 pane
-# usage: ORIGIN_PANE_ID=<pane_id> bash ~/.config/tmux/extensions/codex/scripts/codex_prompt_picker.sh
+# usage: ORIGIN_PANE_ID=<pane_id> bash ~/.config/tmux/scripts/codex_prompt_picker.sh
 # keys: Enter=粘贴；Esc=退出
 
 pause() {
@@ -40,7 +40,7 @@ list_md_files() {
   find "$prompts_dir" -type f -name '*.md' -print 2>/dev/null
 }
 
-preview_script="${TMUX_CODEX_PROMPT_PREVIEW_SCRIPT:-$HOME/.config/tmux/extensions/codex/scripts/_codex_prompt_preview.sh}"
+preview_script="${TMUX_CODEX_PROMPT_PREVIEW_SCRIPT:-$HOME/.config/tmux/scripts/codex_prompt_preview.sh}"
 if [[ ! -x "$preview_script" ]]; then
   printf '%s\n' "缺少预览脚本：$preview_script"
   pause

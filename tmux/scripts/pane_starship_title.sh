@@ -27,9 +27,9 @@ strip_wrappers() {
 
 run_starship() {
   local cfg
-  cfg="${STARSHIP_TMUX_CONFIG:-$HOME/.config/starship-tmux.toml}"
+  cfg="${STARSHIP_TMUX_CONFIG:-$HOME/.config/tmux/starship-tmux.toml}"
   STARSHIP_LOG=error STARSHIP_CONFIG="$cfg" \
-    starship prompt --terminal-width "$width" | strip_wrappers | tr -d '\n'
+    starship prompt --terminal-width "$width" | strip_wrappers | tr -d '\n' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//'
 }
 
 fallback() {
@@ -44,4 +44,3 @@ if command -v starship >/dev/null 2>&1; then
 else
   fallback
 fi
-

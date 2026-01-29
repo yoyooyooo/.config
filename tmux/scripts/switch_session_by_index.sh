@@ -45,8 +45,20 @@ target_id="${target%%::*}"
 target_name="${target#*::}"
 
 first_unread_window="$(
-  tmux list-windows -t "${target_id}" -F $'#{window_index}\t#{window_activity_flag}\t#{window_bell_flag}\t#{window_silence_flag}' 2>/dev/null \
-    | awk -F $'\t' '$2 == 1 || $3 == 1 || $4 == 1 { print $1; exit }'
+  tmux list-windows -t "${target_id}" -F $'#{window_index}\t#{window_id}\t#{?#{==:#{@unread_activity},1},1,0}\t#{window_activity_flag}\t#{window_bell_flag}\t#{window_silence_flag}' 2>/dev/null \
+    | sort -n -k1,1 \
+    | while IFS=$'\t' read -r win_index win_id custom_unread tmux_activity bell silence; do
+        if [[ "${custom_unread:-0}" != "1" && "${tmux_activity:-0}" != "1" && "${bell:-0}" != "1" && "${silence:-0}" != "1" ]]; then
+          continue
+        fi
+        if [[ "${custom_unread:-0}" != "1" && "${tmux_activity:-0}" == "1" ]]; then
+          if ~/.config/tmux/scripts/window_is_ignored.sh "${win_id}" >/dev/null 2>&1; then
+            continue
+          fi
+        fi
+        printf '%s\n' "${win_index}"
+        break
+      done
 )"
 
 target_spec_id="${target_id}"

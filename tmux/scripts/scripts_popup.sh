@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
 
+# shellcheck disable=SC1090
+if [[ -f "$HOME/.config/tmux/scripts/lib/tmux_kit_proxy.sh" ]]; then
+    source "$HOME/.config/tmux/scripts/lib/tmux_kit_proxy.sh"
+fi
+
 tmux_outer() {
     if [[ -n "${OUTER_TMUX_SOCKET:-}" ]]; then
-        command tmux -S "$OUTER_TMUX_SOCKET" "$@"
+        tmux -S "$OUTER_TMUX_SOCKET" "$@"
     else
-        command tmux "$@"
+        tmux "$@"
     fi
 }
 
@@ -66,15 +71,44 @@ EOF
 
 kill_nested_server() {
     [[ -n "${NESTED_SERVER:-}" ]] || return 0
-    command tmux -L "$NESTED_SERVER" kill-server >/dev/null 2>&1 || true
+    tmux -L "$NESTED_SERVER" kill-server >/dev/null 2>&1 || true
+    if [[ -f "$HOME/.config/tmux/scripts/lib/resolve_tmux_kit.sh" ]]; then
+        # shellcheck source=/Users/yoyo/.config/tmux/scripts/lib/resolve_tmux_kit.sh
+        source "$HOME/.config/tmux/scripts/lib/resolve_tmux_kit.sh"
+        local tmux_kit_bin
+        tmux_kit_bin="$(resolve_tmux_kit_bin 2>/dev/null || true)"
+        if [[ -n "${tmux_kit_bin:-}" ]]; then
+            sleep 0.05
+            "$tmux_kit_bin" server cleanup "$NESTED_SERVER" --dry-run false >/dev/null 2>&1 || true
+        fi
+    fi
 }
 
 close_panes_popup() {
     local nested_server="${1:-${NESTED_SERVER:-}}"
     tmux_outer set -gu @panes_popup_open >/dev/null 2>&1 || true
     tmux_outer set -gu @panes_popup_client >/dev/null 2>&1 || true
+    tmux_outer set -gu @panes_popup_origin_pane_id >/dev/null 2>&1 || true
     [[ -n "$nested_server" ]] || return 0
-    command tmux -L "$nested_server" kill-server >/dev/null 2>&1 || true
+    tmux -L "$nested_server" kill-server >/dev/null 2>&1 || true
+
+    if [[ -f "$HOME/.config/tmux/scripts/lib/resolve_tmux_kit.sh" ]]; then
+        # shellcheck source=/Users/yoyo/.config/tmux/scripts/lib/resolve_tmux_kit.sh
+        source "$HOME/.config/tmux/scripts/lib/resolve_tmux_kit.sh"
+        local tmux_kit_bin
+        tmux_kit_bin="$(resolve_tmux_kit_bin 2>/dev/null || true)"
+        if [[ -n "${tmux_kit_bin:-}" ]]; then
+            sleep 0.05
+            "$tmux_kit_bin" server cleanup "$nested_server" --dry-run false >/dev/null 2>&1 || true
+        fi
+    fi
+
+    local socket_dir socket_path
+    socket_dir="${TMUX_TMPDIR:-/tmp}/tmux-$(id -u)"
+    socket_path="${socket_dir}/${nested_server}"
+    if [[ -e "${socket_path:-}" ]]; then
+        rm -f "$socket_path" >/dev/null 2>&1 || true
+    fi
 }
 
 popup_ui() {
@@ -87,37 +121,62 @@ popup_ui() {
     help_width="${TMUX_FZF_PANES_HELP_WIDTH:-13}"
     preview_pct="${TMUX_FZF_PANES_PREVIEW_PCT:-70}"
 
-    nested_server="fzf_panes_popup_$$"
+    origin_client="$(tmux_outer show -gqv '@panes_popup_client')"
+    [[ -n "$origin_client" ]] || origin_client="$(tmux_outer display-message -p '#{client_name}' 2>/dev/null || true)"
+
+    origin_pane_id="$(tmux_outer show -gqv '@panes_popup_origin_pane_id')"
+    if [[ -z "$origin_pane_id" && -n "$origin_client" ]]; then
+        origin_pane_id="$(tmux_outer display-message -p -c "$origin_client" '#{pane_id}' 2>/dev/null || true)"
+    fi
+
+    nested_server="scripts_popup_$$"
     nested_session="popup"
 
-    preview_file="/tmp/tmux_fzf_panes_preview_${USER}_${nested_server}"
+    preview_file="/tmp/tmux_scripts_popup_preview_${USER}_${nested_server}"
     : >"$preview_file" 2>/dev/null || true
+    socket_dir="${TMUX_TMPDIR:-/tmp}/tmux-$(id -u)"
+    socket_path="${socket_dir}/${nested_server}"
 
     cleanup() {
         rm -f "$preview_file" "${preview_file}.tmp" 2>/dev/null || true
-        command tmux -L "$nested_server" kill-server >/dev/null 2>&1 || true
+        tmux -L "$nested_server" kill-server >/dev/null 2>&1 || true
+        if [[ -f "$HOME/.config/tmux/scripts/lib/resolve_tmux_kit.sh" ]]; then
+            # shellcheck source=/Users/yoyo/.config/tmux/scripts/lib/resolve_tmux_kit.sh
+            source "$HOME/.config/tmux/scripts/lib/resolve_tmux_kit.sh"
+            local tmux_kit_bin
+            tmux_kit_bin="$(resolve_tmux_kit_bin 2>/dev/null || true)"
+            if [[ -n "${tmux_kit_bin:-}" ]]; then
+                sleep 0.05
+                "$tmux_kit_bin" server cleanup "$nested_server" --dry-run false >/dev/null 2>&1 || true
+            fi
+        fi
+        if [[ -e "$socket_path" ]]; then
+            rm -f "$socket_path" >/dev/null 2>&1 || true
+        fi
     }
     trap cleanup EXIT SIGINT SIGTERM SIGHUP
 
-    command tmux -L "$nested_server" -f /dev/null new-session -d -s "$nested_session" -n panes >/dev/null 2>&1 || true
-    command tmux -L "$nested_server" set -g status off >/dev/null 2>&1 || true
-    command tmux -L "$nested_server" set -g mouse off >/dev/null 2>&1 || true
-    command tmux -L "$nested_server" bind-key -n M-a run-shell "OUTER_TMUX_SOCKET='$outer_socket' bash '$0' close_panes_popup '$nested_server'" >/dev/null 2>&1 || true
+    tmux -L "$nested_server" -f /dev/null new-session -d -s "$nested_session" -n panes >/dev/null 2>&1 || true
+    tmux -L "$nested_server" set-hook -g client-attached 'set -s exit-unattached on' >/dev/null 2>&1 || true
+    tmux -L "$nested_server" set-hook -ag client-attached 'set -g destroy-unattached on' >/dev/null 2>&1 || true
+    tmux -L "$nested_server" set -g status off >/dev/null 2>&1 || true
+    tmux -L "$nested_server" set -g mouse off >/dev/null 2>&1 || true
+    tmux -L "$nested_server" bind-key -n M-a run-shell "OUTER_TMUX_SOCKET='$outer_socket' bash '$0' close_panes_popup '$nested_server'" >/dev/null 2>&1 || true
 
     # Layout: whole window split vertically (bottom = preview full width),
     # then top split horizontally (right = fixed-width keys help).
-    command tmux -L "$nested_server" split-window -v -p "$preview_pct" -t "$nested_session:0.0" -d \
+    tmux -L "$nested_server" split-window -v -p "$preview_pct" -t "$nested_session:0.0" -d \
         "bash '$0' preview_tail '$preview_file'" >/dev/null 2>&1 || true
 
-    command tmux -L "$nested_server" split-window -h -l "$help_width" -t "$nested_session:0.0" -d \
+    tmux -L "$nested_server" split-window -h -l "$help_width" -t "$nested_session:0.0" -d \
         "bash '$0' keys_help" >/dev/null 2>&1 || true
 
     # Start fzf selector without "typing a command" (no send-keys), so UI shows immediately.
-    command tmux -L "$nested_server" respawn-pane -k -t "$nested_session:0.0" \
-        "OUTER_TMUX_SOCKET='$outer_socket' OUTER_CLIENT='${ORIGIN_CLIENT:-}' ORIGIN_PANE_ID='${ORIGIN_PANE_ID:-}' NESTED_SERVER='$nested_server' PREVIEW_FILE='$preview_file' bash '$0' do_action_popup" \
+    tmux -L "$nested_server" respawn-pane -k -t "$nested_session:0.0" \
+        "OUTER_TMUX_SOCKET='$outer_socket' OUTER_CLIENT='$origin_client' ORIGIN_PANE_ID='$origin_pane_id' NESTED_SERVER='$nested_server' PREVIEW_FILE='$preview_file' bash '$0' do_action_popup" \
         >/dev/null 2>&1 || true
 
-    command tmux -L "$nested_server" -f /dev/null attach-session -t "$nested_session" >/dev/null 2>&1 || true
+    tmux -L "$nested_server" -f /dev/null attach-session -t "$nested_session" >/dev/null 2>&1 || true
 }
 
 preview_tail() {
@@ -279,6 +338,7 @@ do_action_popup() {
         tmux_outer set -gu @fzf_exclude_window_id;
         tmux_outer set -gu @panes_popup_open;
         tmux_outer set -gu @panes_popup_client;
+        tmux_outer set -gu @panes_popup_origin_pane_id;
         if [[ -n "'"$preview_file"'" ]]; then
             rm -f "'"$preview_file"'" "'"$preview_file"'.tmp" 2>/dev/null || true
         fi
@@ -393,7 +453,7 @@ do_action_3pane() {
     selector_pane_id="$(tmux display-message -p '#{pane_id}')"
     tmux set -g @fzf_exclude_window_id "$selector_window_id"
 
-    preview_file="/tmp/tmux_fzf_panes_preview_${USER}_${selector_window_id}_$$"
+    preview_file="/tmp/tmux_scripts_popup_preview_${USER}_${selector_window_id}_$$"
     : >"$preview_file" 2>/dev/null || true
 
     trap '
@@ -544,10 +604,13 @@ panes_src_simple() {
     exclude_window_id="$(tmux_outer show -gqv '@fzf_exclude_window_id')"
     mru="$(tmux_outer show -gqv '@mru_pane_ids')"
     origin_pane_id="${ORIGIN_PANE_ID:-}"
-    if [[ -z "$origin_pane_id" && -n "${OUTER_CLIENT:-}" ]]; then
-        origin_pane_id="$(tmux_outer display-message -p -t "$OUTER_CLIENT" '#{pane_id}' 2>/dev/null || true)"
+    if [[ -z "$origin_pane_id" ]]; then
+        origin_pane_id="$(tmux_outer show -gqv '@panes_popup_origin_pane_id')"
     fi
-    format=$'#D\t#{session_id}\t#{window_id}\t#{window_activity_flag}\t#{=|48|…:session_name}\t#I:#{=|56|…:window_name}\t#P\t#{=|80|…:pane_title}\t#{pane_current_command}\t#{pane_current_path}'
+    if [[ -z "$origin_pane_id" && -n "${OUTER_CLIENT:-}" ]]; then
+        origin_pane_id="$(tmux_outer display-message -p -c "$OUTER_CLIENT" '#{pane_id}' 2>/dev/null || true)"
+    fi
+    format=$'#D\t#{session_id}\t#{window_id}\t#{?#{==:#{@unread_pane_activity},1},1,0}\t#{=|48|…:session_name}\t#I:#{=|56|…:window_name}\t#P\t#{=|80|…:pane_title}\t#{pane_current_command}\t#{pane_current_path}'
 
     out="$(
         tmux_outer list-panes -aF "$format" |

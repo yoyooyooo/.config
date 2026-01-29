@@ -20,13 +20,20 @@ if ! command -v fzf >/dev/null 2>&1; then
   exit 0
 fi
 
-raw_windows="$(tmux list-windows -a -F $'#{session_name}\t#{window_index}\t#{window_activity_flag}\t#{window_zoomed_flag}\t#{window_active}\t#{window_name}' 2>/dev/null || true)"
+raw_windows="$(tmux list-windows -a -F $'#{session_name}\t#{window_index}\t#{window_id}\t#{?#{==:#{@unread_activity},1},1,0}\t#{window_activity_flag}\t#{window_zoomed_flag}\t#{window_active}\t#{window_name}' 2>/dev/null || true)"
 windows="$(
-  while IFS=$'\t' read -r session_name window_index activity_flag zoomed_flag active_flag window_name; do
+  while IFS=$'\t' read -r session_name window_index window_id custom_unread tmux_activity zoomed_flag active_flag window_name; do
     [[ -n "${session_name:-}" && -n "${window_index:-}" ]] || continue
     target="${session_name}:${window_index}"
     unread_mark=" "
-    [[ "${activity_flag:-0}" == "1" ]] && unread_mark="●"
+    unread_flag=0
+    [[ "${custom_unread:-0}" == "1" || "${tmux_activity:-0}" == "1" ]] && unread_flag=1
+    if [[ "${unread_flag}" == "1" && "${custom_unread:-0}" != "1" && "${tmux_activity:-0}" == "1" ]]; then
+      if ~/.config/tmux/scripts/window_is_ignored.sh "${window_id}" >/dev/null 2>&1; then
+        unread_flag=0
+      fi
+    fi
+    [[ "${unread_flag}" == "1" ]] && unread_mark="●"
     zoom_mark=" "
     [[ "${zoomed_flag:-0}" == "1" ]] && zoom_mark="⛶"
     active_mark=" "
@@ -34,7 +41,7 @@ windows="$(
     label="${unread_mark}${zoom_mark}${active_mark} ${session_name}:${window_index}  ${window_name}"
 
     # sort keys: unread first, then session name, then window index
-    printf '%s\t%s\t%s\t%s\t%s\n' "${activity_flag:-0}" "$session_name" "$window_index" "$target" "$label"
+    printf '%s\t%s\t%s\t%s\t%s\n' "${unread_flag:-0}" "$session_name" "$window_index" "$target" "$label"
   done <<<"$raw_windows" | sort -t $'\t' -k1,1nr -k2,2 -k3,3n | cut -f4-
 )"
 if [[ -z "${windows:-}" ]]; then

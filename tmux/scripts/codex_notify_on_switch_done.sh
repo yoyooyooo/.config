@@ -113,7 +113,7 @@ if [[ ! -f "${marker_path}" ]]; then
   exit 0
 fi
 
-~/.config/tmux/extensions/codex/scripts/codex_notify_ack_turn_complete.sh "${pane_id}" >/dev/null 2>&1 || true
+~/.config/tmux/scripts/codex_notify_ack_turn_complete.sh "${pane_id}" >/dev/null 2>&1 || true
 
 if ~/.config/tmux/scripts/tmux_btt_hud_notify.sh "${default_title}" "${hud_body}" "${client_tty:-}" 2>/dev/null; then
   exit 0

@@ -26,20 +26,20 @@ max_index="$(
     | awk -F '-' '$1 ~ /^[0-9]+$/ { if ($1 + 0 > m) m = $1 + 0 } END { print m + 0 }'
 )"
 
-if [[ -z "${max_index}" || ! "${max_index}" =~ ^[0-9]+$ || "${max_index}" -le 0 ]]; then
+if [[ -z "${max_index}" || ! "${max_index}" =~ ^[0-9]+$ || "${max_index}" -le 1 ]]; then
   exit 0
 fi
 
 target_index="${current_index}"
 if [[ "${direction}" == "left" ]]; then
-  if (( target_index <= 0 )); then
+  if (( target_index <= 1 )); then
     target_index="${max_index}"
   else
     target_index="$(( target_index - 1 ))"
   fi
 else
   if (( target_index >= max_index )); then
-    target_index="0"
+    target_index="1"
   else
     target_index="$(( target_index + 1 ))"
   fi

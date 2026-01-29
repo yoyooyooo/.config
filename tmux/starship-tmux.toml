@@ -1,0 +1,41 @@
+add_newline = false
+scan_timeout = 30
+
+# tmux pane title 用：尽量与 ~/.config/starship.toml 的模块格式保持一致（但保持单行、无 $character）
+format = """
+$directory\
+$git_branch\
+$git_status\
+$python\
+"""
+
+command_timeout = 1000
+
+[directory]
+format = "[$path]($style)[$read_only]($read_only_style) "
+style = "bold blue"
+truncation_length = 3
+
+[git_branch]
+format = "[$symbol$branch]($style) "
+symbol = ""
+style = "bold purple"
+
+[git_status]
+format = "([$all_status$ahead_behind]($style) )"
+style = "bold yellow"
+conflicted = " "
+ahead = "⇡${count}"
+behind = "⇣${count}"
+diverged = "⇕${ahead_count}⇣${behind_count}"
+untracked = " ?${count}"
+stashed = " ${count} "
+modified = "[+${count}](bold yellow)"
+staged = " ${count} "
+renamed = " ${count} "
+deleted = "[-${count}](bold red)"
+
+[python]
+format = "[$symbol($virtualenv )]($style)"
+symbol = " "
+style = "bold yellow"

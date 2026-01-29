@@ -15,14 +15,24 @@ safe_key() {
 }
 
 marker_path="${turn_complete_dir}/$(safe_key "${pane_id}")"
-[[ -f "${marker_path}" ]] || exit 0
 
 window_id="$(tmux display-message -p -t "${pane_id}" '#{window_id}' 2>/dev/null || true)"
+[[ -n "${window_id:-}" ]] || exit 0
+
+marker_exists=0
+[[ -f "${marker_path}" ]] && marker_exists=1
+
+if [[ "${marker_exists}" != "1" ]]; then
+  current_done="$(tmux show -w -t "${window_id}" -qv @codex_done 2>/dev/null || true)"
+  if [[ "${current_done:-}" != "1" ]]; then
+    exit 0
+  fi
+fi
 
 pane_group="codex-pane-$(safe_key "${pane_id#%}")"
 
 thread_id=""
-if command -v python3 >/dev/null 2>&1; then
+if [[ "${marker_exists}" == "1" ]] && command -v python3 >/dev/null 2>&1; then
   thread_id="$(
     python3 - "${marker_path}" 2>/dev/null <<'PY' || true
 import json
@@ -65,21 +75,21 @@ if [[ -n "${terminal_notifier:-}" && -x "${terminal_notifier}" ]]; then
   fi
 fi
 
-rm -f "${marker_path}" 2>/dev/null || true
+if [[ "${marker_exists}" == "1" ]]; then
+  rm -f "${marker_path}" 2>/dev/null || true
+fi
 
-if [[ -n "${window_id:-}" ]]; then
-  has_marker="0"
-  while IFS= read -r other_pane_id; do
-    [[ -n "${other_pane_id:-}" ]] || continue
-    if [[ -f "${turn_complete_dir}/$(safe_key "${other_pane_id}")" ]]; then
-      has_marker="1"
-      break
-    fi
-  done < <(tmux list-panes -t "${window_id}" -F '#{pane_id}' 2>/dev/null || true)
-
-  if [[ "${has_marker}" == "1" ]]; then
-    tmux set-window-option -t "${window_id}" @codex_done 1 2>/dev/null || true
-  else
-    tmux set-window-option -t "${window_id}" -u @codex_done 2>/dev/null || true
+has_marker="0"
+while IFS= read -r other_pane_id; do
+  [[ -n "${other_pane_id:-}" ]] || continue
+  if [[ -f "${turn_complete_dir}/$(safe_key "${other_pane_id}")" ]]; then
+    has_marker="1"
+    break
   fi
+done < <(tmux list-panes -t "${window_id}" -F '#{pane_id}' 2>/dev/null || true)
+
+if [[ "${has_marker}" == "1" ]]; then
+  tmux set-window-option -t "${window_id}" @codex_done 1 2>/dev/null || true
+else
+  tmux set-window-option -t "${window_id}" -u @codex_done 2>/dev/null || true
 fi

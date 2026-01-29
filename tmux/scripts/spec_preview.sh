@@ -10,8 +10,15 @@
 set -euo pipefail
 
 pause() {
-  read -r -n 1 -s -p "按任意键关闭..." || true
-  printf '\n'
+  local prompt="${1:-按任意键关闭...}"
+  if [[ -t 1 ]]; then
+    if [[ -r /dev/tty ]]; then
+      read -r -n 1 -s -p "$prompt" < /dev/tty || true
+    else
+      read -r -n 1 -s -p "$prompt" || true
+    fi
+    printf '\n'
+  fi
 }
 
 die() {
@@ -319,8 +326,8 @@ board_list_tasks() {
   local tasks_md
   tasks_md="$specs_dir/$spec_id/tasks.md"
   if [[ ! -f "$tasks_md" ]]; then
-    printf "%d\t%s\t%s\t%s\t%s\n" 0 " " "" "（未创建 tasks.md）" ""
-    exit 0
+    printf '%s\t%s\t%s\t%s\t%s\n' "—" " " "" "（无 tasks.md）" ""
+    return 0
   fi
 
   awk -v US_CODE="$us_code" '
@@ -363,6 +370,8 @@ board_list_tasks() {
       return out != "" ? out : title
     }
 
+    BEGIN { found = 0 }
+
     {
       if (!match($0, /^[[:space:]]*-[[:space:]]*\[[ xX]\][[:space:]]+/)) next
 
@@ -383,18 +392,12 @@ board_list_tasks() {
       line_no = NR
       disp = display_title(title, task_id, story)
       printf "%d\t%s\t%s\t%s\t%s\n", line_no, checked, task_id, disp, $0
-      printed = 1
+      found = 1
     }
 
     END {
-      if (!printed) {
-        if (US_CODE == "ALL") {
-          printf "%d\t%s\t%s\t%s\t%s\n", 0, " ", "", "（暂无 task）", ""
-        } else if (US_CODE == "NO_US") {
-          printf "%d\t%s\t%s\t%s\t%s\n", 0, " ", "", "（暂无无 US 的 task）", ""
-        } else {
-          printf "%d\t%s\t%s\t%s\t%s\n", 0, " ", "", "（该 US 无 task）", ""
-        }
+      if (found == 0) {
+        printf "—\t \t\t（未发现 task：tasks.md 里没有 - [ ] 行）\t\n"
       }
     }
   ' "$tasks_md"
@@ -553,36 +556,6 @@ board_focus_pane() {
 
   if [[ -n "${pane_id:-}" ]]; then
     tmux_nested select-pane -t "$pane_id" >/dev/null 2>&1 || true
-  fi
-}
-
-board_on_pane_focus_out() {
-  state_dir_required
-  local pane_id="${1:-}"
-  [[ -n "${pane_id:-}" ]] || return 0
-
-  local view_mode us_pane task_pane
-  view_mode="$(state_read view_mode "board")"
-  us_pane="$(state_read us_pane_id "")"
-  task_pane="$(state_read task_pane_id "")"
-
-  # 目标体验：用 Enter 进入 nvim 详情后，只要焦点离开该列，就自动回退到 fzf 列表（保持三列联动）。
-  if [[ -n "${task_pane:-}" && "$pane_id" == "$task_pane" ]]; then
-    if [[ "$view_mode" == "board" ]]; then
-      board_try_close_editor "task" "$task_pane" || true
-      board_signal_task_preview_refresh || true
-    fi
-    return 0
-  fi
-
-  if [[ -n "${us_pane:-}" && "$pane_id" == "$us_pane" ]]; then
-    if [[ "$view_mode" == "board" ]]; then
-      board_try_close_editor "us" "$us_pane" || true
-    else
-      board_try_close_editor "artifact" "$us_pane" || true
-      artifacts_signal_preview_refresh || true
-    fi
-    return 0
   fi
 }
 
@@ -978,11 +951,21 @@ artifacts_list_files() {
   spec_dir="$specs_dir/$spec_id"
   [[ -d "$spec_dir" ]] || exit 0
 
-  (
-    cd "$spec_dir" 2>/dev/null || exit 0
-    rg --files
-  ) | while IFS= read -r rel; do
+  local rels=()
+  while IFS= read -r rel; do
     [[ -n "${rel:-}" ]] || continue
+    rels+=("$rel")
+  done < <(
+    cd "$spec_dir" 2>/dev/null || exit 0
+    rg --files 2>/dev/null || true
+  )
+
+  if ((${#rels[@]} == 0)); then
+    printf '%s\t%s\n' "99" "（无可预览产物）"
+    return 0
+  fi
+
+  for rel in "${rels[@]}"; do
     local w="50"
     case "$rel" in
       spec.md) w="01" ;;
@@ -1009,6 +992,18 @@ artifacts_file_focus() {
 
   local prev
   prev="$(state_read selected_artifact_relpath "")"
+  local specs_dir spec_id file
+  specs_dir="$(state_read specs_dir "")"
+  spec_id="$(state_read selected_spec_id "")"
+  file="$specs_dir/$spec_id/$rel"
+  if [[ -z "${specs_dir:-}" || -z "${spec_id:-}" || ! -f "$file" ]]; then
+    if [[ -n "${prev:-}" ]]; then
+      state_write selected_artifact_relpath ""
+      artifacts_signal_preview_refresh
+    fi
+    return 0
+  fi
+
   if [[ "$rel" == "$prev" ]]; then
     return 0
   fi
@@ -1292,6 +1287,12 @@ board_popup_ui() {
   repo_root="${resolved%%$'\t'*}"
   specs_dir="${resolved#*$'\t'}"
 
+  shopt -s nullglob
+  local spec_candidates=("$specs_dir"/[0-9][0-9][0-9]-*)
+  if ((${#spec_candidates[@]} == 0)); then
+    die "未发现任何 spec：$specs_dir/<NNN-*>"
+  fi
+
   local self
   self="${BASH_SOURCE[0]}"
   if require_cmd realpath; then
@@ -1302,18 +1303,24 @@ board_popup_ui() {
   local nested_session="popup"
   local state_dir="${TMPDIR:-/tmp}/tmux_spec_preview_${USER}_${nested_server}"
 
-  mkdir -p "$state_dir" 2>/dev/null || true
-  [[ -d "$state_dir" ]] || die "无法创建 STATE_DIR：$state_dir"
-
-  cleanup() {
-    rm -rf "$state_dir" 2>/dev/null || true
-    command tmux -L "$nested_server" kill-server >/dev/null 2>&1 || true
-  }
-  trap cleanup EXIT SIGINT SIGTERM SIGHUP
-
   export STATE_DIR="$state_dir"
   export NESTED_SERVER="$nested_server"
   export SPEC_PREVIEW_SELF="$self"
+
+  mkdir -p "$STATE_DIR" 2>/dev/null || true
+  [[ -d "$STATE_DIR" ]] || die "无法创建 STATE_DIR：$STATE_DIR"
+
+  cleanup() {
+    local sd="${STATE_DIR:-}"
+    local ns="${NESTED_SERVER:-}"
+    if [[ -n "${sd:-}" ]]; then
+      rm -rf "$sd" 2>/dev/null || true
+    fi
+    if [[ -n "${ns:-}" ]]; then
+      command tmux -L "$ns" kill-server >/dev/null 2>&1 || true
+    fi
+  }
+  trap cleanup EXIT SIGINT SIGTERM SIGHUP
 
   state_write repo_root "$repo_root"
   state_write specs_dir "$specs_dir"
@@ -1332,7 +1339,15 @@ board_popup_ui() {
     state_write selected_spec_id "$initial_spec"
   fi
 
-  command tmux -L "$nested_server" -f /dev/null new-session -d -s "$nested_session" -n spec >/dev/null 2>&1 || true
+  local new_session_err new_session_rc
+  new_session_err=""
+  set +e
+  new_session_err="$(command tmux -L "$nested_server" -f /dev/null new-session -d -s "$nested_session" -n spec 2>&1)"
+  new_session_rc=$?
+  set -e
+  if ((new_session_rc != 0)); then
+    die "内嵌 tmux 启动失败（rc=$new_session_rc）：${new_session_err:-未知错误}"
+  fi
   command tmux -L "$nested_server" set -g status off >/dev/null 2>&1 || true
   command tmux -L "$nested_server" set -g mouse on >/dev/null 2>&1 || true
   # 滚轮策略：
@@ -1354,11 +1369,6 @@ board_popup_ui() {
   command tmux -L "$nested_server" bind-key -n C-g kill-server >/dev/null 2>&1 || true
   command tmux -L "$nested_server" bind-key -n Escape if-shell -F "#{==:#{pane_title},PREVIEW}" "kill-server" "send-keys Escape" >/dev/null 2>&1 || true
   command tmux -L "$nested_server" bind-key -n C-c if-shell -F "#{==:#{pane_title},PREVIEW}" "kill-server" "send-keys C-c" >/dev/null 2>&1 || true
-
-  # 焦点离开某列时，若该列正处在 nvim 详情页，则自动退出回到 fzf 列表（保持联动）。
-  local focus_out_hook
-  focus_out_hook="run-shell -b \"STATE_DIR='$state_dir' NESTED_SERVER='$nested_server' SPEC_PREVIEW_SELF='$self' bash '$self' __on_pane_focus_out '#{pane_id}' '#{pane_title}'\""
-  command tmux -L "$nested_server" set-hook -g pane-focus-out "$focus_out_hook" >/dev/null 2>&1 || true
 
   command tmux -L "$nested_server" setw -g pane-border-status top >/dev/null 2>&1 || true
   command tmux -L "$nested_server" set -g pane-border-format ' #{pane_title} ' >/dev/null 2>&1 || true
@@ -1500,11 +1510,6 @@ case "$internal_cmd" in
   __task_preview_pane)
     shift || true
     board_task_preview_pane "$@"
-    exit 0
-    ;;
-  __on_pane_focus_out)
-    shift || true
-    board_on_pane_focus_out "$@"
     exit 0
     ;;
   __artifact_pane)
@@ -1751,6 +1756,18 @@ pick_file_in_spec() {
 
   cd "$chosen_spec"
 
+  local files=()
+  while IFS= read -r file; do
+    [[ -n "${file:-}" ]] || continue
+    files+=("$file")
+  done < <(rg --files 2>/dev/null || true)
+
+  if ((${#files[@]} == 0)); then
+    printf '%s\n' "该 spec 目录下没有可浏览文件。"
+    pause
+    return 130
+  fi
+
   fzf_args=(
     --prompt="$(basename "$chosen_spec")> "
     --preview 'bat --paging=never --style=numbers --color=always --line-range :400 -- {} 2>/dev/null'
@@ -1770,7 +1787,7 @@ pick_file_in_spec() {
   fi
 
   set +e
-  picked_file="$(rg --files | fzf "${fzf_args[@]}")"
+  picked_file="$(printf '%s\n' "${files[@]}" | fzf "${fzf_args[@]}")"
   fzf_status=$?
   set -e
 

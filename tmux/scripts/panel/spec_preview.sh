@@ -6,8 +6,15 @@ set -euo pipefail
 core="$HOME/.config/tmux/scripts/spec_preview.sh"
 
 pause() {
-  read -r -n 1 -s -p "按任意键关闭..." || true
-  printf '\n'
+  local prompt="${1:-按任意键关闭...}"
+  if [[ -t 1 ]]; then
+    if [[ -r /dev/tty ]]; then
+      read -r -n 1 -s -p "$prompt" < /dev/tty || true
+    else
+      read -r -n 1 -s -p "$prompt" || true
+    fi
+    printf '\n'
+  fi
 }
 
 if [[ ! -x "$core" ]]; then

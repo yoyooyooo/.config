@@ -3,7 +3,7 @@ set -euo pipefail
 
 panel_dir="${TMUX_PANEL_DIR:-$HOME/.config/tmux/scripts/panel}"
 local_panel_dir="${TMUX_PANEL_LOCAL_DIR:-$HOME/.config/tmux/local/scripts/panel}"
-ext_panel_dir="${TMUX_PANEL_EXT_DIR:-$HOME/.config/tmux/extensions/codex/scripts/panel}"
+ext_panel_dir="${TMUX_PANEL_EXT_DIR:-}"
 panel_meta_preview="${TMUX_PANEL_META_PREVIEW:-$panel_dir/_meta_preview.sh}"
 self_name="$(basename "${BASH_SOURCE[0]}")"
 
@@ -72,14 +72,15 @@ if ! command -v fzf >/dev/null 2>&1; then
 fi
 
 panel_dirs=()
-if [[ -d "$panel_dir" ]]; then
-  panel_dirs+=("$panel_dir")
-fi
-if [[ "${TMUX_ENABLE_CODEX:-0}" == "1" && -d "$ext_panel_dir" ]]; then
-  panel_dirs+=("$ext_panel_dir")
-fi
+# 优先级：local 覆盖 ext 覆盖默认 panel；并在列表里按文件名去重，避免面板出现同名重复项
 if [[ -d "$local_panel_dir" ]]; then
   panel_dirs+=("$local_panel_dir")
+fi
+if [[ -n "${ext_panel_dir}" && -d "$ext_panel_dir" ]]; then
+  panel_dirs+=("$ext_panel_dir")
+fi
+if [[ -d "$panel_dir" ]]; then
+  panel_dirs+=("$panel_dir")
 fi
 
 if ((${#panel_dirs[@]} == 0)); then
@@ -90,19 +91,24 @@ fi
 
 shopt -s nullglob
 items=()
+seen_basenames=$'\n'
 for dir in "${panel_dirs[@]}"; do
   for path in "$dir"/*; do
     [[ -f "$path" && -x "$path" ]] || continue
     base="$(basename "$path")"
     [[ "$base" == "$self_name" ]] && continue
     [[ "$base" == _* ]] && continue
+    case "$seen_basenames" in
+      *$'\n'"$base"$'\n'*) continue ;;
+    esac
+    seen_basenames+="$base"$'\n'
     items+=("$base"$'\t'"$(script_desc_one_line "$path")"$'\t'"$path")
   done
 done
 
 if ((${#items[@]} == 0)); then
   printf '%s\n' "未发现可执行脚本：${panel_dirs[*]}"
-  printf '%s\n' "提示：把脚本放进上述目录并 chmod +x；脚本会自动出现在面板里。"
+  printf '%s\n' "提示：把脚本放进该目录并 chmod +x；脚本会自动出现在面板里。"
   pause
   exit 0
 fi

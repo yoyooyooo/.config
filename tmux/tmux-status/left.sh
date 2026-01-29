@@ -50,56 +50,41 @@ extract_index() {
   fi
 }
 
-count_session_alerts() {
-  local alerts="${1:-}"
-  [[ -z "${alerts}" ]] && printf '0' && return 0
+unread_counts="$(
+  tmux list-windows -a -F $'#{session_id}\t#{window_id}\t#{?#{==:#{@unread_activity},1},1,0}\t#{window_activity_flag}\t#{window_bell_flag}\t#{window_silence_flag}' 2>/dev/null \
+    | awk -F $'\t' '
+        $3 == 1 || $4 == 1 || $5 == 1 || $6 == 1 {
+          # If the only signal is tmux activity, apply ignore filtering.
+          if ($3 != 1 && $4 == 1) {
+            cmd = ENVIRON["HOME"] "/.config/tmux/scripts/window_is_ignored.sh " $2 " >/dev/null 2>&1"
+            if (system(cmd) == 0) {
+              next
+            }
+          }
 
-  local -a parts
-  declare -A seen=()
-  local part idx count
-  count=0
+          # Keep window tabs consistent with session counts:
+          # if a window is counted due to tmux activity/bell/silence (and not ignored),
+          # mirror it into @unread_activity so the window tab shows the dot too.
+          if ($3 != 1 && ($4 == 1 || $5 == 1 || $6 == 1)) {
+            set_cmd = "tmux set -w -t " $2 " @unread_activity 1 >/dev/null 2>&1"
+            system(set_cmd)
+          }
 
-  IFS=',' read -r -a parts <<<"${alerts}"
-  for part in "${parts[@]}"; do
-    part="${part//[[:space:]]/}"
-    idx="${part%%[^0-9]*}"
-    [[ -z "${idx}" ]] && continue
-    if [[ -z "${seen[$idx]+x}" ]]; then
-      seen[$idx]=1
-      count=$((count + 1))
-    fi
-  done
+          c[$1]++
+        }
+        END { for (sid in c) printf "%s\t%d\n", sid, c[sid] }
+      ' || true
+)"
 
-  printf '%s' "${count}"
-}
-
-
-
-sessions=$(tmux list-sessions -F $'#{session_id}\t#{session_name}\t#{session_alerts}' 2>/dev/null || true)
+sessions=$(tmux list-sessions -F $'#{session_id}\t#{session_name}' 2>/dev/null || true)
 if [[ -z "$sessions" ]]; then
   exit 0
-fi
-
-declare -A session_codex_done_counts=()
-windows=$(tmux list-windows -a -F $'#{session_id}\t#{@codex_done}' 2>/dev/null || true)
-if [[ -n "${windows}" ]]; then
-  while IFS=$'\t' read -r win_session_id win_codex_done; do
-    [[ -n "${win_session_id:-}" ]] || continue
-    [[ "${win_codex_done:-}" == "1" ]] || continue
-    win_session_id_norm=$(normalize_session_id "${win_session_id}")
-    current_count="${session_codex_done_counts[${win_session_id_norm}]:-0}"
-    if [[ "${current_count}" =~ ^[0-9]+$ ]]; then
-      session_codex_done_counts[${win_session_id_norm}]=$((current_count + 1))
-    else
-      session_codex_done_counts[${win_session_id_norm}]=1
-    fi
-  done <<<"${windows}"
 fi
 
 rendered=""
 prev_bg=""
 current_session_id_norm=$(normalize_session_id "$current_session_id")
-while IFS=$'\t' read -r session_id name session_alerts; do
+while IFS=$'\t' read -r session_id name; do
   [[ -z "${session_id:-}" ]] && continue
   [[ -z "${name:-}" ]] && continue
 
@@ -132,20 +117,13 @@ while IFS=$'\t' read -r session_id name session_alerts; do
   prefix_render=""
   prefix_plain=""
   prefix_len=0
-  done_count="${session_codex_done_counts[${session_id_norm}]:-0}"
-  unread_count=$(count_session_alerts "${session_alerts:-}")
-  if [[ "${done_count}" =~ ^[0-9]+$ ]] && (( done_count > 0 )); then
-    prefix_plain+="●${done_count}"
-  fi
+  unread_count="$(awk -F $'\t' -v id="${session_id}" '$1 == id { print $2; found=1; exit } END { if (!found) print 0 }' <<<"${unread_counts}")"
   if [[ "${unread_count}" =~ ^[0-9]+$ ]] && (( unread_count > 0 )); then
     prefix_plain+="●${unread_count}"
   fi
   if [[ -n "${prefix_plain}" ]]; then
     prefix_plain+=" "
     prefix_len=${#prefix_plain}
-    if [[ "${done_count}" =~ ^[0-9]+$ ]] && (( done_count > 0 )); then
-      prefix_render+="#[fg=#3fb950,bold]●${done_count}"
-    fi
     if [[ "${unread_count}" =~ ^[0-9]+$ ]] && (( unread_count > 0 )); then
       prefix_render+="#[fg=colour208,bold]●${unread_count}"
     fi

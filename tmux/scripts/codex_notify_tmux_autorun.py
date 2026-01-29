@@ -95,6 +95,10 @@ def _pane_exists(tmux_bin: str, socket: str | None, pane_id: str) -> bool:
     return bool(_tmux_capture(tmux_bin, socket, ["display-message", "-p", "-t", pane_id, "#{pane_id}"]))
 
 
+def _pane_mode(tmux_bin: str, socket: str | None, pane_id: str) -> str | None:
+    return _tmux_capture(tmux_bin, socket, ["display-message", "-p", "-t", pane_id, "#{pane_mode}"])
+
+
 def _pane_looks_idle(capture: str) -> bool:
     if not capture:
         return False
@@ -243,6 +247,10 @@ def main(argv: list[str]) -> int:
     if DRY_RUN:
         _save_state(state_path, {"remaining": remaining - 1, "last_turn_id": turn_id})
         return 0
+
+    pane_mode = _pane_mode(tmux_bin, socket, pane_id) or ""
+    if pane_mode.startswith("copy-mode"):
+        _tmux_ok(tmux_bin, socket, ["send-keys", "-t", pane_id, "-X", "cancel"])
 
     ok = _tmux_ok(tmux_bin, socket, ["send-keys", "-t", pane_id, "-l", directive, "Enter"])
     if not ok:

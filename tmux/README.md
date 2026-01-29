@@ -10,8 +10,11 @@ An XDG-style tmux configuration split into small layers, designed to be portable
    ```tmux
    source-file ~/.config/tmux/tmux.conf
 
+   # Optional: machine-local overrides (NOT synced by default)
+   source-file -q ~/.config/tmux/local/private.conf
+
    # Optional: enable extensions
-   source-file -q ~/.config/tmux/extensions/codex/tmux.conf
+   source-file -q ~/.config/tmux/extensions/tmux-agent/tmux.conf
 
    # Optional: TPM (plugins)
    if-shell 'test -x "$HOME/.config/tmux/plugins/tpm/tpm"' 'run-shell "$HOME/.config/tmux/plugins/tpm/tpm"'
@@ -34,49 +37,21 @@ An XDG-style tmux configuration split into small layers, designed to be portable
 - `platform/macos-iterm2.conf`: macOS+iTerm2 tweaks (auto-loaded on macOS).
 - `features/init.conf`: optional feature bundles (kept small).
 - `extensions/`: opt-in integrations.
-  - `extensions/codex/`: Codex integration (optional).
-- `local/`: user-private files (ignored by default).
+- `local/`: machine-private files (ignored by default).
+- `run/`: runtime/state (ignored by default).
 
-## macOS + iTerm2
+## Extensions
 
-`platform/macos-iterm2.conf` is loaded automatically on macOS. For iTerm2, it usually helps to:
-
-- Enable “Option as Meta” if you rely on `M-*` key bindings.
-- Keep “Allow Mouse Reporting” enabled if mouse behavior seems broken.
-
-## Codex extension (optional)
+### tmux-agent (optional)
 
 Enable it by adding this to `~/.tmux.conf`:
 
-`source-file -q ~/.config/tmux/extensions/codex/tmux.conf`
+`source-file -q ~/.config/tmux/extensions/tmux-agent/tmux.conf`
 
-What it adds (when enabled):
+Notes:
 
-- A `●` marker in window tabs for Codex “turn complete” (`@codex_done`).
-- A `M-k` popup to browse Codex prompts.
-- A `pane-focus-in` hook to auto-ack “turn complete” markers.
-- Clicking a Codex notification will try to reveal iTerm2 hotkey window (if needed) and jump to the target tmux session/window/pane.
-- `extensions/codex/scripts/panel/reload_active_codex.sh` needs Codex CLI (`codex` command; you may have an alias like `cx`).
-- `extensions/codex/scripts/panel/codex_worktree_reload_followup.sh` creates/reuses a worktree, reloads Codex into that directory, then sends a follow-up (uses git-worktree-kit `wt` + tmux-kit popup when needed).
-
-### Codex notify fan-out (dispatcher + handlers)
-
-Codex typically allows only one notify command. This repo provides a dispatcher so you can keep your own notify script while also enabling the tmux/Codex integration.
-
-- Dispatcher: `~/.config/tmux/extensions/codex/notify/dispatch.py`
-- Built-in handler(s): `~/.config/tmux/extensions/codex/notify/handlers/*`
-
-Environment variables (optional):
-
-- `CODEX_CLI_BIN`: override the Codex CLI binary name/path (defaults to auto-detect `codex` then `cx`).
-- `CODEX_NOTIFY_USER_HANDLER`: path to your existing notify handler (dispatcher will call it too).
-- `CODEX_NOTIFY_EXTRA_HANDLER_DIRS`: extra dirs to scan for event handlers (colon-separated). For `agent-turn-complete`, name them like `codex_notify_agent_turn_complete.py` / `codex_notify_agent_turn_complete__*.sh`.
-- `CODEX_NOTIFY_SUBHANDLER_TIMEOUT_SECONDS`: per-handler timeout (default `2.0`).
-- `CODEX_NOTIFY_ON_CLICK_LOG_PATH`: log file for notification click-to-jump (default `~/.config/tmux/run/codex-notify-on-click.log`).
-- `CODEX_NOTIFY_ON_CLICK_LOG=0`: disable click-to-jump logging.
-- `CODEX_NOTIFY_ENABLE_TMUX_AUTORUN=1`: enable the `codex_notify_tmux_autorun.py` handler.
-
-If you already use `~/.codex/notify.py`, enabling the tmux Codex extension will set `CODEX_NOTIFY_HANDLER` to the dispatcher automatically (so `~/.codex/notify.py` can delegate to it).
+- By default it uses `tmux-agent` from `$PATH` (`@tmux_agent_cli`).
+- If you need an absolute path or extra bindings, put them in `~/.config/tmux/local/tmux-agent.conf` (not synced).
 
 ## 中文文档
 
