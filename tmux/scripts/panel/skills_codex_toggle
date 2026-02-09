@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# desc: manage skills (enable/disable via mv between ~/.codex/skills and ~/.agents/skills)
+# desc: manage skills (toggle via mv between ~/.codex/skills and ~/.agents/skills)
 # usage: fzf popup; Enter toggle, Ctrl-e enable, Ctrl-d disable, Ctrl-r reload
 # keys: Enter toggle | Ctrl-e enable | Ctrl-d disable | Ctrl-r reload | Tab multi
 set -euo pipefail
@@ -321,4 +321,3 @@ case "$cmd" in
     run_fzf
     ;;
 esac
-

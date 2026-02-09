@@ -94,10 +94,10 @@ macOS（Codex 通知/点击回跳）必需：
     - `clear_iterm2_ghost_lines.sh`：清理 iTerm2 “横线残影”（调用 reset+ClearScrollback+attach）
     - `launcher.sh`：面板入口（汇总 panel dirs → fzf 选择 → exec）
     - `pane_auto_layout`：递归等分当前 window 的 panes（保留分屏拓扑）
-    - `session_switcher.sh`：fzf 选择 session 并切换（带预览）
-    - `skills_manager.sh`：skills 开关（在 `~/.codex/skills` 与 `~/.agents/skills` 间移动）
-    - `spec_preview.sh`：从 panel 启动 spec_preview（避免 popup 竞态）
-    - `window_switcher.sh`：fzf 选择任意 session 的 window 并切换（预览 panes + 输出）
+	    - `session_switcher.sh`：fzf 选择 session 并切换（带预览）
+	    - `skills_codex_toggle`：skills 开关（在 `~/.codex/skills` 与 `~/.agents/skills` 间移动）
+	    - `spec_preview.sh`：从 panel 启动 spec_preview（避免 popup 竞态）
+	    - `window_switcher.sh`：fzf 选择任意 session 的 window 并切换（预览 panes + 输出）
 - Codex 集成（tmux-agent）：`~/.config/tmux/local/codex.conf`
   - `tmux-agent codex notify`：Codex notify 入口（在 `~/.codex/config.toml` 配置）
   - `tmux-agent codex notify-ack`：pane focus 确认/清除完成标记

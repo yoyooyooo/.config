@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if [[ -f "$HOME/.config/tmux/scripts/lib/tmux_kit_proxy.sh" ]]; then
-  # shellcheck source=/Users/yoyo/.config/tmux/scripts/lib/tmux_kit_proxy.sh
+  # shellcheck source=$HOME/.config/tmux/scripts/lib/tmux_kit_proxy.sh
   source "$HOME/.config/tmux/scripts/lib/tmux_kit_proxy.sh"
 fi
 

@@ -73,7 +73,7 @@ kill_nested_server() {
     [[ -n "${NESTED_SERVER:-}" ]] || return 0
     tmux -L "$NESTED_SERVER" kill-server >/dev/null 2>&1 || true
     if [[ -f "$HOME/.config/tmux/scripts/lib/resolve_tmux_kit.sh" ]]; then
-        # shellcheck source=/Users/yoyo/.config/tmux/scripts/lib/resolve_tmux_kit.sh
+        # shellcheck source=$HOME/.config/tmux/scripts/lib/resolve_tmux_kit.sh
         source "$HOME/.config/tmux/scripts/lib/resolve_tmux_kit.sh"
         local tmux_kit_bin
         tmux_kit_bin="$(resolve_tmux_kit_bin 2>/dev/null || true)"
@@ -93,7 +93,7 @@ close_panes_popup() {
     tmux -L "$nested_server" kill-server >/dev/null 2>&1 || true
 
     if [[ -f "$HOME/.config/tmux/scripts/lib/resolve_tmux_kit.sh" ]]; then
-        # shellcheck source=/Users/yoyo/.config/tmux/scripts/lib/resolve_tmux_kit.sh
+        # shellcheck source=$HOME/.config/tmux/scripts/lib/resolve_tmux_kit.sh
         source "$HOME/.config/tmux/scripts/lib/resolve_tmux_kit.sh"
         local tmux_kit_bin
         tmux_kit_bin="$(resolve_tmux_kit_bin 2>/dev/null || true)"
@@ -141,7 +141,7 @@ popup_ui() {
         rm -f "$preview_file" "${preview_file}.tmp" 2>/dev/null || true
         tmux -L "$nested_server" kill-server >/dev/null 2>&1 || true
         if [[ -f "$HOME/.config/tmux/scripts/lib/resolve_tmux_kit.sh" ]]; then
-            # shellcheck source=/Users/yoyo/.config/tmux/scripts/lib/resolve_tmux_kit.sh
+            # shellcheck source=$HOME/.config/tmux/scripts/lib/resolve_tmux_kit.sh
             source "$HOME/.config/tmux/scripts/lib/resolve_tmux_kit.sh"
             local tmux_kit_bin
             tmux_kit_bin="$(resolve_tmux_kit_bin 2>/dev/null || true)"
