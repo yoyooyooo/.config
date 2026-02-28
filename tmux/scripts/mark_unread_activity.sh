@@ -14,11 +14,20 @@ pane_info="$(
 
 IFS=$'\t' read -r _pane_id detected_window_id session_attached window_active pane_active pane_tty pane_current_command pane_pid <<<"${pane_info}"
 
+now_s="$(date +%s 2>/dev/null || echo 0)"
+if [[ -z "${now_s:-}" || ! "${now_s}" =~ ^[0-9]+$ ]]; then
+  now_s=0
+fi
+
 pane_unread="$(tmux show -p -t "${pane_id}" -qv @unread_pane_activity 2>/dev/null || true)"
 pane_ignored="$(tmux show -p -t "${pane_id}" -qv @unread_ignore_activity 2>/dev/null || true)"
 pane_checked="$(tmux show -p -t "${pane_id}" -qv @unread_ignore_checked 2>/dev/null || true)"
 pane_check_count="$(tmux show -p -t "${pane_id}" -qv @unread_ignore_check_count 2>/dev/null || true)"
 pane_checked_at="$(tmux show -p -t "${pane_id}" -qv @unread_ignore_checked_at 2>/dev/null || true)"
+suppress_until="$(tmux show -p -t "${pane_id}" -qv @unread_suppress_until 2>/dev/null || true)"
+if [[ "${suppress_until:-}" =~ ^[0-9]+$ && "${now_s}" -gt 0 && "${now_s}" -lt "${suppress_until}" ]]; then
+  exit 0
+fi
 if [[ "${pane_ignored:-0}" == "1" ]]; then
   exit 0
 fi
@@ -61,10 +70,6 @@ if [[ -n "${ignore_fg_re}" ]]; then
   if [[ "${pane_checked:-0}" != "1" ]]; then
     should_check_ignore=1
   elif (( pane_check_count < ignore_max_checks )); then
-    now_s="$(date +%s 2>/dev/null || echo 0)"
-    if [[ -z "${now_s:-}" || ! "${now_s}" =~ ^[0-9]+$ ]]; then
-      now_s=0
-    fi
     if (( now_s > 0 && (now_s - pane_checked_at) >= ignore_recheck_seconds )); then
       should_check_ignore=1
     fi

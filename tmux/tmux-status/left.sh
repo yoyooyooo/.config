@@ -51,25 +51,9 @@ extract_index() {
 }
 
 unread_counts="$(
-  tmux list-windows -a -F $'#{session_id}\t#{window_id}\t#{?#{==:#{@unread_activity},1},1,0}\t#{window_activity_flag}\t#{window_bell_flag}\t#{window_silence_flag}' 2>/dev/null \
+  tmux list-windows -a -F $'#{session_id}\t#{?#{==:#{@unread_activity},1},1,0}' 2>/dev/null \
     | awk -F $'\t' '
-        $3 == 1 || $4 == 1 || $5 == 1 || $6 == 1 {
-          # If the only signal is tmux activity, apply ignore filtering.
-          if ($3 != 1 && $4 == 1) {
-            cmd = ENVIRON["HOME"] "/.config/tmux/scripts/window_is_ignored.sh " $2 " >/dev/null 2>&1"
-            if (system(cmd) == 0) {
-              next
-            }
-          }
-
-          # Keep window tabs consistent with session counts:
-          # if a window is counted due to tmux activity/bell/silence (and not ignored),
-          # mirror it into @unread_activity so the window tab shows the dot too.
-          if ($3 != 1 && ($4 == 1 || $5 == 1 || $6 == 1)) {
-            set_cmd = "tmux set -w -t " $2 " @unread_activity 1 >/dev/null 2>&1"
-            system(set_cmd)
-          }
-
+        $2 == 1 {
           c[$1]++
         }
         END { for (sid in c) printf "%s\t%d\n", sid, c[sid] }

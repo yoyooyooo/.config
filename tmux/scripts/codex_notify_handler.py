@@ -213,6 +213,35 @@ def _tmux_client_count(tmux_bin: str, socket: str | None) -> int:
     return sum(1 for line in out.splitlines() if line.strip())
 
 
+def _tmux_client_for_pane(tmux_bin: str, socket: str | None, pane_id: str) -> tuple[str | None, str | None]:
+    if not pane_id:
+        return None, None
+    out = _tmux_capture(tmux_bin, socket, ["list-clients", "-F", "#{client_name}\t#{client_tty}\t#{pane_id}\t#{client_flags}"])
+    if not out:
+        return None, None
+
+    matches: list[tuple[bool, str, str | None]] = []
+    for line in out.splitlines():
+        parts = line.split("\t")
+        if len(parts) != 4:
+            continue
+        client_name, client_tty, client_pane_id, client_flags = (part.strip() for part in parts)
+        if not client_name or client_pane_id != pane_id:
+            continue
+        flag_set = {part.strip() for part in client_flags.split(",") if part.strip()}
+        matches.append(("focused" in flag_set, client_name, client_tty or None))
+
+    if not matches:
+        return None, None
+    for focused, client_name, client_tty in matches:
+        if focused:
+            return client_name, client_tty
+    if len(matches) == 1:
+        _focused, client_name, client_tty = matches[0]
+        return client_name, client_tty
+    return None, None
+
+
 def _safe_filename(value: str) -> str:
     value = (value or "").strip()
     if not value:
@@ -433,8 +462,10 @@ def _default_on_click_command(*, cwd: str, title: str) -> str | None:
     session_name = _tmux_display(tmux_bin, socket, "#{session_name}", target=pane_id)
     window_id = _tmux_display(tmux_bin, socket, "#{window_id}", target=pane_id)
     window_name = _tmux_display(tmux_bin, socket, "#{window_name}", target=pane_id)
-    client_name = _tmux_display(tmux_bin, socket, "#{client_name}")
-    client_tty = _tmux_display(tmux_bin, socket, "#{client_tty}")
+    client_name, client_tty = _tmux_client_for_pane(tmux_bin, socket, pane_id)
+    if (not client_name or not client_tty) and _tmux_client_count(tmux_bin, socket) == 1:
+        client_name = client_name or _tmux_display(tmux_bin, socket, "#{client_name}")
+        client_tty = client_tty or _tmux_display(tmux_bin, socket, "#{client_tty}")
 
     argv: list[str] = [sys.executable or "python3", ON_CLICK_SCRIPT, "--tmux-bin", tmux_bin]
     if client_name:

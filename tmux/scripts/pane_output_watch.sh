@@ -70,6 +70,13 @@ while True:
   pane_ignored = tmux_show("@unread_ignore_activity")
   if pane_ignored == "1":
     continue
+  suppress_until = tmux_show("@unread_suppress_until")
+  try:
+    suppress_until_s = int(suppress_until)
+  except Exception:
+    suppress_until_s = 0
+  if suppress_until_s > 0 and int(time.time()) < suppress_until_s:
+    continue
 
   pane_unread = tmux_show("@unread_pane_activity")
   pane_checked = tmux_show("@unread_ignore_checked")
@@ -107,6 +114,13 @@ tr '\r' '\n' | while IFS= read -r _line; do
     pane_ignored="$(tmux show -p -t "${pane_id}" -qv @unread_ignore_activity 2>/dev/null || true)"
     if [[ "${pane_ignored:-0}" == "1" ]]; then
       continue
+    fi
+    suppress_until="$(tmux show -p -t "${pane_id}" -qv @unread_suppress_until 2>/dev/null || true)"
+    if [[ "${suppress_until:-}" =~ ^[0-9]+$ ]]; then
+      now_s="$(date +%s 2>/dev/null || echo 0)"
+      if [[ "${now_s:-0}" =~ ^[0-9]+$ ]] && (( now_s > 0 && now_s < suppress_until )); then
+        continue
+      fi
     fi
 
     pane_unread="$(tmux show -p -t "${pane_id}" -qv @unread_pane_activity 2>/dev/null || true)"

@@ -136,6 +136,57 @@ def _resolve_client(
     return None
 
 
+def _client_session_id(tmux_bin: str, socket: str | None, client_name: str | None) -> str | None:
+    if not client_name:
+        return None
+    raw = _tmux_capture(tmux_bin, socket, ["list-clients", "-F", "#{client_name}\t#{session_id}"])
+    if not raw:
+        return None
+    for line in raw.splitlines():
+        name, _, session_id = line.partition("\t")
+        if name.strip() == client_name:
+            value = session_id.strip()
+            return value or None
+    return None
+
+
+def _resolve_client_for_session(
+    *,
+    tmux_bin: str,
+    socket: str | None,
+    session_id: str | None,
+    connected: list[TmuxClient],
+) -> TmuxClient | None:
+    if not session_id:
+        return None
+    raw = _tmux_capture(tmux_bin, socket, ["list-clients", "-F", "#{client_name}\t#{client_tty}\t#{session_id}\t#{client_flags}"])
+    if not raw:
+        return None
+
+    matches: list[tuple[bool, TmuxClient]] = []
+    connected_names = {client.name for client in connected}
+    for line in raw.splitlines():
+        parts = line.split("\t")
+        if len(parts) != 4:
+            continue
+        name, tty, client_session_id, flags = (part.strip() for part in parts)
+        if not name or name not in connected_names:
+            continue
+        if client_session_id != session_id:
+            continue
+        flag_set = {part.strip() for part in flags.split(",") if part.strip()}
+        matches.append(("focused" in flag_set, TmuxClient(name=name, tty=tty or None)))
+
+    if not matches:
+        return None
+    for focused, client in matches:
+        if focused:
+            return client
+    if len(matches) == 1:
+        return matches[0][1]
+    return None
+
+
 def _tmux_pane_exists(tmux_bin: str, socket: str | None, pane_id: str) -> bool:
     return bool(_tmux_display(tmux_bin, socket, pane_id, "#{pane_id}"))
 
@@ -287,27 +338,6 @@ def main(argv: list[str]) -> int:
 
     socket = (args.tmux_socket or "").strip() or None
 
-    clients = _tmux_list_clients(tmux_bin, socket)
-    resolved_client = _resolve_client(
-        requested_name=(args.client or "").strip() or None,
-        requested_tty=(args.client_tty or "").strip() or None,
-        connected=clients,
-    )
-    if not resolved_client:
-        connected_desc = "，".join(
-            f"{c.name}({c.tty})" if c.tty else c.name
-            for c in clients
-        ) or "无"
-        _hud(
-            args.notification_title or "Codex",
-            f"回跳失败：找不到对应 tmux client\n已连接：{connected_desc}",
-            client_tty=args.client_tty,
-        )
-        return 0
-
-    focus_tty = (args.client_tty or "").strip() or resolved_client.tty or ""
-    focused_iterm2 = _iterm2_select_session_by_tty(focus_tty) if focus_tty else False
-
     pane_id = (args.pane_id or "").strip() or None
     if pane_id and not _tmux_pane_exists(tmux_bin, socket, pane_id):
         pane_id = None
@@ -337,6 +367,40 @@ def main(argv: list[str]) -> int:
         return 0
 
     target_session = chosen_session.id
+
+    clients = _tmux_list_clients(tmux_bin, socket)
+    resolved_client = _resolve_client(
+        requested_name=(args.client or "").strip() or None,
+        requested_tty=(args.client_tty or "").strip() or None,
+        connected=clients,
+    )
+    target_bound_client = _resolve_client_for_session(
+        tmux_bin=tmux_bin,
+        socket=socket,
+        session_id=target_session,
+        connected=clients,
+    )
+    if resolved_client:
+        resolved_client_session = _client_session_id(tmux_bin, socket, resolved_client.name)
+        if resolved_client_session and resolved_client_session != target_session and target_bound_client:
+            resolved_client = target_bound_client
+    elif target_bound_client:
+        resolved_client = target_bound_client
+
+    if not resolved_client:
+        connected_desc = "，".join(
+            f"{c.name}({c.tty})" if c.tty else c.name
+            for c in clients
+        ) or "无"
+        _hud(
+            args.notification_title or "Codex",
+            f"回跳失败：找不到对应 tmux client\n已连接：{connected_desc}",
+            client_tty=args.client_tty,
+        )
+        return 0
+
+    focus_tty = (args.client_tty or "").strip() or resolved_client.tty or ""
+    focused_iterm2 = _iterm2_select_session_by_tty(focus_tty) if focus_tty else False
 
     commands: list[list[str]] = []
     commands.append(["switch-client", "-c", resolved_client.name, "-t", target_session])

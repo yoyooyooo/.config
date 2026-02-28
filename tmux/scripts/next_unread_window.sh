@@ -5,8 +5,8 @@ set -euo pipefail
 client_tty="${1:-}"
 
 # Switch between "unread" windows (alerts) across sessions.
-# For noisy TUIs that keep producing activity flags, prefer the least-recently-seen
-# unread window (tracked via window option @next_unread_seen_seq updated by hook).
+# Unread source is the custom flag (@unread_activity) maintained by watcher/hooks.
+# Prefer the least-recently-seen unread window (tracked by @next_unread_seen_seq).
 
 dry_run="${TMUX_NEXT_UNREAD_DRY_RUN:-0}"
 force_cross="${TMUX_NEXT_UNREAD_FORCE_CROSS:-0}"
@@ -71,7 +71,7 @@ acquire_lock() {
 tmux_switch() {
   local target="${1:-}"
   if [[ -n "${client_tty:-}" ]]; then
-    tmux switch-client -c "${client_tty}" -t "${target}" 2>/dev/null || tmux switch-client -t "${target}" 2>/dev/null
+    tmux switch-client -c "${client_tty}" -t "${target}" 2>/dev/null
   else
     tmux switch-client -t "${target}" 2>/dev/null
   fi
@@ -81,9 +81,9 @@ tmux_select_pane() {
   local target="${1:-}"
   [[ -n "${target:-}" ]] || return 0
   if [[ -n "${client_tty:-}" ]]; then
-    tmux select-pane -c "${client_tty}" -t "${target}"
+    tmux select-pane -c "${client_tty}" -t "${target}" 2>/dev/null
   else
-    tmux select-pane -t "${target}"
+    tmux select-pane -t "${target}" 2>/dev/null
   fi
 }
 
@@ -275,25 +275,17 @@ best_cross_win_index=""
 best_cross_win_id=""
 best_cross_has_unread=0
 
-while IFS=$'\t' read -r sess_id sess_name win_id win_index custom_unread tmux_activity bell silence seen_seq; do
+while IFS=$'\t' read -r sess_id sess_name win_id win_index custom_unread seen_seq; do
   [[ -z "${sess_id:-}" ]] && continue
   [[ -z "${win_id:-}" ]] && continue
   [[ -z "${win_index:-}" ]] && continue
   session_is_excluded "${sess_name:-}" && continue
 
-  if [[ "${custom_unread:-}" != "1" && "${tmux_activity:-}" != "1" && "${bell:-}" != "1" && "${silence:-}" != "1" ]]; then
+  if [[ "${custom_unread:-0}" != "1" ]]; then
     continue
   fi
 
   [[ "${win_id}" == "${current_window_id:-}" ]] && continue
-
-  # If the only signal is tmux's activity flag, apply ignore filtering
-  # (Dev Server / Codex panes should not participate in unread rotation).
-  if [[ "${custom_unread:-0}" != "1" && "${tmux_activity:-0}" == "1" ]]; then
-    if ~/.config/tmux/scripts/window_is_ignored.sh "${win_id}" >/dev/null 2>&1; then
-      continue
-    fi
-  fi
 
   sess_idx=1000000
   if [[ "${sess_name:-}" =~ ^([0-9]+)- ]]; then
@@ -341,7 +333,7 @@ while IFS=$'\t' read -r sess_id sess_name win_id win_index custom_unread tmux_ac
       [[ "${custom_unread:-}" == "1" ]] && best_cross_has_unread=1
     fi
   fi
-done < <(tmux list-windows -a -F $'#{session_id}\t#{session_name}\t#{window_id}\t#{window_index}\t#{?#{==:#{@unread_activity},1},1,0}\t#{window_activity_flag}\t#{window_bell_flag}\t#{window_silence_flag}\t#{@next_unread_seen_seq}' 2>/dev/null || true)
+done < <(tmux list-windows -a -F $'#{session_id}\t#{session_name}\t#{window_id}\t#{window_index}\t#{?#{==:#{@unread_activity},1},1,0}\t#{@next_unread_seen_seq}' 2>/dev/null || true)
 
 target_id=""
 target_session_name=""

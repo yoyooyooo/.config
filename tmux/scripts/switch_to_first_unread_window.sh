@@ -29,16 +29,11 @@ IFS=$'\t' read -r session_id current_window_index < <(
 [[ -z "${session_id}" ]] && exit 0
 
 min_idx="$(
-  tmux list-windows -t "${session_id}" -F $'#{window_index}\t#{window_id}\t#{?#{==:#{@unread_activity},1},1,0}\t#{window_activity_flag}\t#{window_bell_flag}\t#{window_silence_flag}' 2>/dev/null \
+  tmux list-windows -t "${session_id}" -F $'#{window_index}\t#{?#{==:#{@unread_activity},1},1,0}' 2>/dev/null \
     | sort -n -k1,1 \
-    | while IFS=$'\t' read -r win_index win_id custom_unread tmux_activity bell silence; do
-        if [[ "${custom_unread:-0}" != "1" && "${tmux_activity:-0}" != "1" && "${bell:-0}" != "1" && "${silence:-0}" != "1" ]]; then
+    | while IFS=$'\t' read -r win_index custom_unread; do
+        if [[ "${custom_unread:-0}" != "1" ]]; then
           continue
-        fi
-        if [[ "${custom_unread:-0}" != "1" && "${tmux_activity:-0}" == "1" ]]; then
-          if ~/.config/tmux/scripts/window_is_ignored.sh "${win_id}" >/dev/null 2>&1; then
-            continue
-          fi
         fi
         printf '%s\n' "${win_index}"
         break

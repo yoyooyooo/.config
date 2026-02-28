@@ -7,9 +7,18 @@ pane_id="${2:-}"
 
 [[ -n "$window_id" ]] || exit 0
 
-# Skip if the window has already been manually renamed.
-renamed_flag="$(tmux display-message -p -t "$window_id" '#{window_renamed_flag}' 2>/dev/null || true)"
-if [[ "$renamed_flag" == "1" ]]; then
+# Skip during restore cooldown window to avoid racing tmux-resurrect.
+block_until="$(tmux show-option -gqv @window_auto_name_block_until 2>/dev/null || true)"
+if [[ "$block_until" =~ ^[0-9]+$ ]]; then
+  now_epoch="$(date +%s)"
+  if (( now_epoch < block_until )); then
+    exit 0
+  fi
+fi
+
+# Skip if window automatic rename is disabled (usually means custom/restored name).
+auto_rename="$(tmux display-message -p -t "$window_id" '#{automatic-rename}' 2>/dev/null || true)"
+if [[ "$auto_rename" == "0" || "$auto_rename" == "off" ]]; then
   exit 0
 fi
 
