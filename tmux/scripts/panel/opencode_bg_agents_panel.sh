@@ -36,6 +36,52 @@ is_opencode_like_pane() {
   return 1
 }
 
+collect_tree_pids() {
+  local root_pid="$1"
+  local -a queue=()
+  local -a all=()
+  local seen=$'\n'
+  local pid child
+
+  [[ -n "${root_pid:-}" ]] || return 0
+  queue+=("$root_pid")
+  all+=("$root_pid")
+  seen+="${root_pid}"$'\n'
+
+  while ((${#queue[@]} > 0)); do
+    pid="${queue[0]}"
+    queue=("${queue[@]:1}")
+    while IFS= read -r child; do
+      [[ -n "${child:-}" ]] || continue
+      case "$seen" in
+        *$'\n'"$child"$'\n'*) continue ;;
+      esac
+      seen+="${child}"$'\n'
+      queue+=("$child")
+      all+=("$child")
+    done < <(pgrep -P "$pid" 2>/dev/null || true)
+  done
+
+  printf '%s\n' "${all[@]}"
+}
+
+pane_has_engine_process() {
+  local pane_pid="$1"
+  local pid cmd
+  [[ -n "${pane_pid:-}" ]] || return 1
+
+  while IFS= read -r pid; do
+    [[ -n "${pid:-}" ]] || continue
+    cmd="$(ps -o command= -p "$pid" 2>/dev/null | head -n1 || true)"
+    [[ -n "${cmd:-}" ]] || continue
+    if [[ "$cmd" =~ (^|[[:space:]/])(opencode|codex)([[:space:]]|$) ]] || [[ "$cmd" == *"oh-my-opencode"* ]]; then
+      return 0
+    fi
+  done < <(collect_tree_pids "$pane_pid")
+
+  return 1
+}
+
 truncate_text() {
   local text="${1:-}"
   local max_len="${2:-40}"
@@ -127,8 +173,8 @@ select_and_jump_subagent() {
   fi
 
   rows="$(
-    tmux list-panes -a -F $'#{session_name}\t#{window_index}\t#{window_name}\t#{pane_index}\t#{pane_id}\t#{pane_active}\t#{pane_current_command}\t#{pane_title}\t#{pane_current_path}' 2>/dev/null | \
-    while IFS=$'\t' read -r s_name w_idx w_name p_idx p_id active cmd title p_path; do
+    tmux list-panes -a -F $'#{session_name}\t#{window_index}\t#{window_name}\t#{pane_index}\t#{pane_id}\t#{pane_active}\t#{pane_current_command}\t#{pane_title}\t#{pane_current_path}\t#{pane_pid}' 2>/dev/null | \
+    while IFS=$'\t' read -r s_name w_idx w_name p_idx p_id active cmd title p_path pane_pid; do
       [[ -n "${p_id:-}" ]] || continue
       local kind
       kind=""
@@ -136,6 +182,8 @@ select_and_jump_subagent() {
         kind="S"
       elif [[ "$p_id" != "${ORIGIN_PANE_ID:-}" ]] && is_opencode_like_pane "${cmd:-}" "${title:-}"; then
         kind="H"
+      elif [[ "$p_id" != "${ORIGIN_PANE_ID:-}" ]] && pane_has_engine_process "${pane_pid:-}"; then
+        kind="P"
       else
         continue
       fi
@@ -164,7 +212,7 @@ select_and_jump_subagent() {
       --delimiter=$'\t' \
       --with-nth=1,2,3,4,5,6,7 \
       --prompt='subagent> ' \
-      --header=$'S=严格(omo-subagent-*)  H=经验(opencode/codex/OpenCode)  Enter=跳转  Esc=返回' \
+      --header=$'S=严格(omo-subagent-*)  H=经验(title/cmd)  P=进程树(opencode/codex)  Enter=跳转  Esc=返回' \
       --preview 'tmux capture-pane -p -t {2} -S -200 2>/dev/null | tail -n 200' \
       --preview-window='down,70%,wrap,follow'
   )" || true
@@ -190,7 +238,7 @@ render_panel() {
   local origin_pane="$1"
   local origin_session_id origin_window_id origin_cmd origin_title origin_path origin_pid
   local now all_panes line
-  local global_count=0 strict_count=0 heuristic_count=0
+  local global_count=0 strict_count=0 heuristic_count=0 proc_count=0
   local origin_window_count=0 origin_window_strict=0 origin_window_heuristic=0
   local opencode_like_total=0
   local -a rows_origin=()
@@ -204,12 +252,12 @@ render_panel() {
   origin_pid="$(tmux display-message -p -t "$origin_pane" '#{pane_pid}' 2>/dev/null || true)"
   now="$(date '+%Y-%m-%d %H:%M:%S')"
 
-  all_panes="$(tmux list-panes -a -F $'#{session_id}\t#{window_id}\t#{pane_id}\t#{pane_active}\t#{pane_current_command}\t#{pane_title}' 2>/dev/null || true)"
+  all_panes="$(tmux list-panes -a -F $'#{session_id}\t#{window_id}\t#{pane_id}\t#{pane_active}\t#{pane_current_command}\t#{pane_title}\t#{pane_pid}' 2>/dev/null || true)"
 
   while IFS= read -r line; do
-    local s_id w_id p_id active cmd title short_title row kind
+    local s_id w_id p_id active cmd title pane_pid short_title row kind
     [[ -n "${line:-}" ]] || continue
-    IFS=$'\t' read -r s_id w_id p_id active cmd title <<<"$line"
+    IFS=$'\t' read -r s_id w_id p_id active cmd title pane_pid <<<"$line"
     [[ -n "${p_id:-}" ]] || continue
     if is_opencode_like_pane "${cmd:-}" "${title:-}"; then
       opencode_like_total=$((opencode_like_total + 1))
@@ -221,6 +269,9 @@ render_panel() {
     elif [[ "$p_id" != "$origin_pane" ]] && is_opencode_like_pane "${cmd:-}" "${title:-}"; then
       kind="H"
       heuristic_count=$((heuristic_count + 1))
+    elif [[ "$p_id" != "$origin_pane" ]] && pane_has_engine_process "${pane_pid:-}"; then
+      kind="P"
+      proc_count=$((proc_count + 1))
     else
       continue
     fi
@@ -253,8 +304,8 @@ render_panel() {
   printf '\n'
   build_opencode_probe "$origin_pid"
   printf '\n'
-  printf 'Subagents: 全局=%d(严格=%d/经验=%d)  同窗口=%d(严格=%d/经验=%d)  其他窗口=%d\n' \
-    "$global_count" "$strict_count" "$heuristic_count" \
+  printf 'Subagents: 全局=%d(严格=%d/经验=%d/进程=%d)  同窗口=%d(严格=%d/经验=%d)  其他窗口=%d\n' \
+    "$global_count" "$strict_count" "$heuristic_count" "$proc_count" \
     "$origin_window_count" "$origin_window_strict" "$origin_window_heuristic" "$((global_count - origin_window_count))"
   printf 'Debug: opencode-like panes(含当前)=%d\n' "$opencode_like_total"
   printf '\n'
