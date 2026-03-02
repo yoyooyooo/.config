@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# desc: 后台/bg/oMo：实时观测当前 pane 关联的 background subagent（数量 + 明细）
-# usage: 在 M-p 面板选择；s 列表跳转，q/Esc 退出，r 手动刷新
-# note: 优先读取 ORIGIN_PANE_ID（由 M-p 注入），并先探测该 pane 的 opencode 进程树
+# desc: 后台/bg/oMo：subagent 交互选择器（上下选择 + 回车跳转）
+# usage: 在 M-p 面板选择；↑↓ 选择，Enter 跳转，Ctrl-r 刷新，Esc 退出
+# note: 轮询在后台更新快照，不再前台闪屏
 set -euo pipefail
 
 pause() {
@@ -17,6 +17,24 @@ die() {
 
 require_cmd() {
   command -v "$1" >/dev/null 2>&1
+}
+
+truncate_text() {
+  local text="${1:-}"
+  local max_len="${2:-40}"
+  if ((${#text} <= max_len)); then
+    printf '%s' "$text"
+    return 0
+  fi
+  printf '%s…' "${text:0:max_len-1}"
+}
+
+detect_origin_pane() {
+  local pane_id="${ORIGIN_PANE_ID:-}"
+  if [[ -z "${pane_id}" || "${pane_id}" != %* ]]; then
+    pane_id="$(tmux display-message -p '#{pane_id}' 2>/dev/null || true)"
+  fi
+  printf '%s' "$pane_id"
 }
 
 is_strict_subagent_title() {
@@ -82,258 +100,184 @@ pane_has_engine_process() {
   return 1
 }
 
-truncate_text() {
-  local text="${1:-}"
-  local max_len="${2:-40}"
-  if ((${#text} <= max_len)); then
-    printf '%s' "$text"
+classify_pane_kind() {
+  local pane_id="$1"
+  local cmd="$2"
+  local title="$3"
+  local pane_pid="$4"
+  local origin_pane="$5"
+
+  if is_strict_subagent_title "$title"; then
+    printf 'S'
     return 0
   fi
-  printf '%s…' "${text:0:max_len-1}"
-}
 
-detect_origin_pane() {
-  local pane_id="${ORIGIN_PANE_ID:-}"
-  if [[ -z "${pane_id}" || "${pane_id}" != %* ]]; then
-    pane_id="$(tmux display-message -p '#{pane_id}' 2>/dev/null || true)"
+  if [[ "$pane_id" != "$origin_pane" ]] && is_opencode_like_pane "$cmd" "$title"; then
+    printf 'H'
+    return 0
   fi
-  printf '%s' "$pane_id"
+
+  if [[ "$pane_id" != "$origin_pane" ]] && pane_has_engine_process "$pane_pid"; then
+    printf 'P'
+    return 0
+  fi
+
+  printf ''
+  return 0
 }
 
-collect_descendant_pids() {
-  local root_pid="$1"
-  local -a queue=()
-  local -a all=()
-  local seen=$'\n'
-  local pid child
+refresh_snapshot_once() {
+  local origin_pane="$1"
+  local rows_file="$2"
+  local summary_file="$3"
 
-  [[ -n "$root_pid" ]] || return 0
-  queue+=("$root_pid")
-  all+=("$root_pid")
-  seen+="${root_pid}"$'\n'
+  local rows_tmp="${rows_file}.tmp"
+  local summary_tmp="${summary_file}.tmp"
+  local line
+  local total=0 strict=0 heuristic=0 proc=0 candidates=0 opencode_like=0
 
-  while ((${#queue[@]} > 0)); do
-    pid="${queue[0]}"
-    queue=("${queue[@]:1}")
-    while IFS= read -r child; do
-      [[ -n "${child:-}" ]] || continue
-      case "$seen" in
-        *$'\n'"$child"$'\n'*) continue ;;
-      esac
-      seen+="${child}"$'\n'
-      queue+=("$child")
-      all+=("$child")
-    done < <(pgrep -P "$pid" 2>/dev/null || true)
+  : >"$rows_tmp"
+
+  while IFS= read -r line; do
+    local s_name w_idx w_name p_idx p_id active cmd title p_path pane_pid kind target clean_title
+    [[ -n "${line:-}" ]] || continue
+    IFS=$'\t' read -r s_name w_idx w_name p_idx p_id active cmd title p_path pane_pid <<<"$line"
+    [[ -n "${p_id:-}" ]] || continue
+
+    if is_opencode_like_pane "${cmd:-}" "${title:-}"; then
+      opencode_like=$((opencode_like + 1))
+    fi
+
+    kind="$(classify_pane_kind "$p_id" "${cmd:-}" "${title:-}" "${pane_pid:-}" "$origin_pane")"
+    [[ -n "${kind:-}" ]] || continue
+
+    total=$((total + 1))
+    case "$kind" in
+      S) strict=$((strict + 1)) ;;
+      H) heuristic=$((heuristic + 1)) ;;
+      P) proc=$((proc + 1)) ;;
+    esac
+
+    if [[ "$p_id" == "$origin_pane" ]]; then
+      continue
+    fi
+
+    target="${s_name}:${w_idx}"
+    clean_title="${title#omo-subagent-}"
+
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+      "$target" \
+      "$p_id" \
+      "$kind" \
+      "${active:-0}" \
+      "$(truncate_text "${cmd:-}" 20)" \
+      "$(truncate_text "${clean_title:-}" 46)" \
+      "$(truncate_text "${w_name:-}" 20)" \
+      "$(truncate_text "${p_path:-}" 56)" \
+      >>"$rows_tmp"
+
+    candidates=$((candidates + 1))
+  done < <(tmux list-panes -a -F $'#{session_name}\t#{window_index}\t#{window_name}\t#{pane_index}\t#{pane_id}\t#{pane_active}\t#{pane_current_command}\t#{pane_title}\t#{pane_current_path}\t#{pane_pid}' 2>/dev/null || true)
+
+  {
+    printf '识别: 全部=%d (S=%d H=%d P=%d)  可切=%d  opencode-like(含当前)=%d\n' "$total" "$strict" "$heuristic" "$proc" "$candidates" "$opencode_like"
+    printf '按键: ↑↓ 选择  Enter 跳转  Ctrl-r 刷新  Esc 退出\n'
+    printf 'Kind: S=严格(omo-subagent-*) H=经验(title/cmd) P=进程树(opencode/codex)\n'
+  } >"$summary_tmp"
+
+  mv -f "$rows_tmp" "$rows_file"
+  mv -f "$summary_tmp" "$summary_file"
+}
+
+start_snapshot_worker() {
+  local origin_pane="$1"
+  local rows_file="$2"
+  local summary_file="$3"
+  local interval_sec="${4:-2}"
+
+  while true; do
+    refresh_snapshot_once "$origin_pane" "$rows_file" "$summary_file"
+    sleep "$interval_sec"
   done
-
-  printf '%s\n' "${all[@]}"
 }
 
-build_opencode_probe() {
-  local pane_pid="$1"
-  local cmds=""
-  local matched=""
-  local pid cmd
-
-  [[ -n "${pane_pid:-}" ]] || {
-    printf '%s\n' "未找到 pane pid"
-    printf '%s\n' ""
-    return 0
-  }
-
-  while IFS= read -r pid; do
-    [[ -n "${pid:-}" ]] || continue
-    cmd="$(ps -o command= -p "$pid" 2>/dev/null | head -n1 || true)"
-    [[ -n "${cmd:-}" ]] || continue
-    cmds+="${cmd}"$'\n'
-    if [[ "$cmd" =~ (^|[[:space:]/])(opencode|codex)([[:space:]]|$) ]] || [[ "$cmd" == *"oh-my-opencode"* ]]; then
-      matched+="${cmd}"$'\n'
-    fi
-  done < <(collect_descendant_pids "$pane_pid")
-
-  if [[ -n "${matched}" ]]; then
-    printf '%s\n' "已检测到 opencode 相关进程："
-    printf '%s' "$matched" | awk 'NF' | head -n 3
-  else
-    printf '%s\n' "未检测到明确的 opencode 进程（可能在 shell 空闲态）"
-    if [[ -n "${cmds}" ]]; then
-      printf '%s\n' "当前进程链（前 3 行）："
-      printf '%s' "$cmds" | awk 'NF' | head -n 3
-    fi
-  fi
-}
-
-select_and_jump_subagent() {
-  local origin_client="${ORIGIN_CLIENT:-}"
-  local rows selected target pane_id
-
-  if ! require_cmd fzf; then
-    tmux display-message "未安装 fzf，无法进入选择列表"
-    return 1
-  fi
-
-  rows="$(
-    tmux list-panes -a -F $'#{session_name}\t#{window_index}\t#{window_name}\t#{pane_index}\t#{pane_id}\t#{pane_active}\t#{pane_current_command}\t#{pane_title}\t#{pane_current_path}\t#{pane_pid}' 2>/dev/null | \
-    while IFS=$'\t' read -r s_name w_idx w_name p_idx p_id active cmd title p_path pane_pid; do
-      [[ -n "${p_id:-}" ]] || continue
-      local kind
-      kind=""
-      if is_strict_subagent_title "${title:-}"; then
-        kind="S"
-      elif [[ "$p_id" != "${ORIGIN_PANE_ID:-}" ]] && is_opencode_like_pane "${cmd:-}" "${title:-}"; then
-        kind="H"
-      elif [[ "$p_id" != "${ORIGIN_PANE_ID:-}" ]] && pane_has_engine_process "${pane_pid:-}"; then
-        kind="P"
-      else
-        continue
-      fi
-      target="${s_name}:${w_idx}"
-      printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-        "$target" \
-        "$p_id" \
-        "$kind" \
-        "${active:-0}" \
-        "${cmd:-}" \
-        "$(truncate_text "${title#omo-subagent-}" 42)" \
-        "${w_name:-}" \
-        "${p_path:-}"
-    done
-  )"
-
-  if [[ -z "${rows:-}" ]]; then
-    tmux display-message "当前没有可跳转的 oMo subagent pane"
-    return 1
-  fi
-
-  selected="$(
-    printf '%s\n' "$rows" | fzf \
-      --reverse \
-      --exit-0 \
-      --delimiter=$'\t' \
-      --with-nth=1,2,3,4,5,6,7 \
-      --prompt='subagent> ' \
-      --header=$'S=严格(omo-subagent-*)  H=经验(title/cmd)  P=进程树(opencode/codex)  Enter=跳转  Esc=返回' \
-      --preview 'tmux capture-pane -p -t {2} -S -200 2>/dev/null | tail -n 200' \
-      --preview-window='down,70%,wrap,follow'
-  )" || true
-
-  if [[ -z "${selected:-}" ]]; then
-    return 1
-  fi
-
-  target="${selected%%$'\t'*}"
-  pane_id="$(printf '%s' "$selected" | cut -f2)"
-  [[ -n "${target:-}" && -n "${pane_id:-}" ]] || return 1
+jump_to_pane() {
+  local origin_client="$1"
+  local target="$2"
+  local pane_id="$3"
 
   if [[ -n "${origin_client:-}" ]]; then
     tmux switch-client -c "$origin_client" -t "$target" >/dev/null 2>&1 || tmux switch-client -t "$target" >/dev/null 2>&1 || true
   else
     tmux switch-client -t "$target" >/dev/null 2>&1 || true
   fi
+
   tmux select-pane -t "$pane_id" >/dev/null 2>&1 || true
-  return 0
+  tmux display-message "已切换: ${target} ${pane_id}"
 }
 
-render_panel() {
+run_picker() {
   local origin_pane="$1"
-  local origin_session_id origin_window_id origin_cmd origin_title origin_path origin_pid
-  local now all_panes line
-  local global_count=0 strict_count=0 heuristic_count=0 proc_count=0
-  local origin_window_count=0 origin_window_strict=0 origin_window_heuristic=0
-  local opencode_like_total=0
-  local -a rows_origin=()
-  local -a rows_other=()
+  local origin_client="${ORIGIN_CLIENT:-}"
 
-  origin_session_id="$(tmux display-message -p -t "$origin_pane" '#{session_id}' 2>/dev/null || true)"
-  origin_window_id="$(tmux display-message -p -t "$origin_pane" '#{window_id}' 2>/dev/null || true)"
+  if ! require_cmd fzf; then
+    die "未安装 fzf，无法使用交互选择。"
+  fi
+
+  local rows_file summary_file
+  rows_file="$(mktemp -t omo-bg-rows.XXXXXX)"
+  summary_file="$(mktemp -t omo-bg-summary.XXXXXX)"
+
+  refresh_snapshot_once "$origin_pane" "$rows_file" "$summary_file"
+
+  start_snapshot_worker "$origin_pane" "$rows_file" "$summary_file" "2" &
+  local worker_pid=$!
+
+  cleanup() {
+    kill "${worker_pid:-}" >/dev/null 2>&1 || true
+    rm -f "${rows_file:-}" "${summary_file:-}" "${rows_file:-}.tmp" "${summary_file:-}.tmp" >/dev/null 2>&1 || true
+  }
+  trap cleanup EXIT INT TERM HUP
+
+  local origin_cmd origin_title origin_path summary_line header selected target pane_id
   origin_cmd="$(tmux display-message -p -t "$origin_pane" '#{pane_current_command}' 2>/dev/null || true)"
   origin_title="$(tmux display-message -p -t "$origin_pane" '#{pane_title}' 2>/dev/null || true)"
   origin_path="$(tmux display-message -p -t "$origin_pane" '#{pane_current_path}' 2>/dev/null || true)"
-  origin_pid="$(tmux display-message -p -t "$origin_pane" '#{pane_pid}' 2>/dev/null || true)"
-  now="$(date '+%Y-%m-%d %H:%M:%S')"
+  summary_line="$(tr '\n' ' ' < "$summary_file" | sed 's/[[:space:]]\+/ /g')"
 
-  all_panes="$(tmux list-panes -a -F $'#{session_id}\t#{window_id}\t#{pane_id}\t#{pane_active}\t#{pane_current_command}\t#{pane_title}\t#{pane_pid}' 2>/dev/null || true)"
+  header="Origin: ${origin_pane} cmd=${origin_cmd:-unknown} title=$(truncate_text "${origin_title:-}" 36) | ${summary_line}"
 
-  while IFS= read -r line; do
-    local s_id w_id p_id active cmd title pane_pid short_title row kind
-    [[ -n "${line:-}" ]] || continue
-    IFS=$'\t' read -r s_id w_id p_id active cmd title pane_pid <<<"$line"
-    [[ -n "${p_id:-}" ]] || continue
-    if is_opencode_like_pane "${cmd:-}" "${title:-}"; then
-      opencode_like_total=$((opencode_like_total + 1))
-    fi
-    kind=""
-    if is_strict_subagent_title "${title:-}"; then
-      kind="S"
-      strict_count=$((strict_count + 1))
-    elif [[ "$p_id" != "$origin_pane" ]] && is_opencode_like_pane "${cmd:-}" "${title:-}"; then
-      kind="H"
-      heuristic_count=$((heuristic_count + 1))
-    elif [[ "$p_id" != "$origin_pane" ]] && pane_has_engine_process "${pane_pid:-}"; then
-      kind="P"
-      proc_count=$((proc_count + 1))
-    else
-      continue
-    fi
+  selected="$({
+    cat "$rows_file"
+  } | fzf \
+      --reverse \
+      --exit-0 \
+      --delimiter=$'\t' \
+      --with-nth=1,2,3,4,5,6,7 \
+      --prompt='subagent> ' \
+      --header "$header" \
+      --header-lines=0 \
+      --preview 'printf "PATH: %s\\n----\\n" {8}; tmux capture-pane -p -t {2} -S -200 2>/dev/null | tail -n 200' \
+      --preview-window='down,70%,wrap,follow' \
+      --bind "start:reload(cat '$rows_file')" \
+      --bind "ctrl-r:reload(cat '$rows_file')" \
+      --bind "up:up+reload(cat '$rows_file'),down:down+reload(cat '$rows_file'),pgup:page-up+reload(cat '$rows_file'),pgdn:page-down+reload(cat '$rows_file')"
+  )" || true
 
-    global_count=$((global_count + 1))
-    short_title="${title#omo-subagent-}"
-    row="$(printf '%-6s %-2s %-3s %-12s %-26s' "$p_id" "$kind" "${active:-0}" "$(truncate_text "$cmd" 12)" "$(truncate_text "$short_title" 26)")"
-
-    if [[ "${s_id:-}" == "${origin_session_id:-}" && "${w_id:-}" == "${origin_window_id:-}" ]]; then
-      origin_window_count=$((origin_window_count + 1))
-      if [[ "$kind" == "S" ]]; then
-        origin_window_strict=$((origin_window_strict + 1))
-      else
-        origin_window_heuristic=$((origin_window_heuristic + 1))
-      fi
-      rows_origin+=("$row")
-    else
-      rows_other+=("$row")
-    fi
-  done <<<"$all_panes"
-
-  printf '\033[H\033[2J'
-  printf 'oMo Background Subagent Panel\n'
-  printf '时间: %s\n' "$now"
-  printf '按键: s 选择并跳转 | q/Esc 退出 | r 刷新\n'
-  printf '\n'
-  printf 'Origin Pane: %s  CMD: %s\n' "$origin_pane" "${origin_cmd:-unknown}"
-  printf 'Title: %s\n' "$(truncate_text "${origin_title:-}" 72)"
-  printf 'Path : %s\n' "$(truncate_text "${origin_path:-}" 72)"
-  printf '\n'
-  build_opencode_probe "$origin_pid"
-  printf '\n'
-  printf 'Subagents: 全局=%d(严格=%d/经验=%d/进程=%d)  同窗口=%d(严格=%d/经验=%d)  其他窗口=%d\n' \
-    "$global_count" "$strict_count" "$heuristic_count" "$proc_count" \
-    "$origin_window_count" "$origin_window_strict" "$origin_window_heuristic" "$((global_count - origin_window_count))"
-  printf 'Debug: opencode-like panes(含当前)=%d\n' "$opencode_like_total"
-  printf '\n'
-  printf '%-6s %-2s %-3s %-12s %-26s\n' "Pane" "K" "A" "Cmd" "Title"
-  printf '%s\n' "---------------------------------------------------------------"
-
-  if ((${#rows_origin[@]} == 0)); then
-    printf '%s\n' "(当前 origin window 暂无 subagent pane)"
-  else
-    local r
-    for r in "${rows_origin[@]}"; do
-      printf '%s\n' "$r"
-    done
+  if [[ -z "${selected:-}" ]]; then
+    tmux display-message "未选择目标（已退出）"
+    return 0
   fi
 
-  if ((${#rows_other[@]} > 0)); then
-    printf '\n'
-    printf '%s\n' "Other Windows (前 8 条):"
-    local idx=0
-    local other_row
-    for other_row in "${rows_other[@]}"; do
-      printf '%s\n' "$other_row"
-      idx=$((idx + 1))
-      if ((idx >= 8)); then
-        break
-      fi
-    done
+  target="$(printf '%s' "$selected" | cut -f1)"
+  pane_id="$(printf '%s' "$selected" | cut -f2)"
+
+  if [[ -z "${target:-}" || -z "${pane_id:-}" || "${pane_id}" != %* ]]; then
+    tmux display-message "选择结果无效，未切换"
+    return 1
   fi
+
+  jump_to_pane "$origin_client" "$target" "$pane_id"
 }
 
 if ! require_cmd tmux; then
@@ -354,19 +298,4 @@ if ! tmux display-message -p -t "$origin_pane_id" '#{pane_id}' >/dev/null 2>&1; 
   die "origin pane 不存在：${origin_pane_id}"
 fi
 
-while true; do
-  render_panel "$origin_pane_id"
-  if IFS= read -r -s -n 1 -t 1 key; then
-    case "$key" in
-      q|Q) exit 0 ;;
-      $'\e') exit 0 ;;
-      r|R) ;;
-      s|S)
-        if select_and_jump_subagent; then
-          exit 0
-        fi
-        ;;
-      *) ;;
-    esac
-  fi
-done
+run_picker "$origin_pane_id"
