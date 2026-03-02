@@ -136,6 +136,7 @@ macOS（Codex 通知/点击回跳）必需：
   - 面板会导出 `ORIGIN_PANE_ID` / `ORIGIN_CLIENT`，供脚本对“触发时的 pane/client”做操作
   - 示例：`spec_preview.sh`（在当前仓库的 `specs/<NNN-*>` 下用 fzf + bat + nvim/less 预览文件；tmux 内为分屏预览）
   - 示例：`pane_auto_layout`（对触发 pane 所在 window 做“递归等分”，保留分屏拓扑）
+  - 示例：`opencode_bg_agents_panel.sh`（实时观测 origin pane 关联的 oMo background subagent 数量与明细）
 - `M-\`（无需 prefix）：skills 管理器（fzf + popup），仅列出含 `SKILL.md` 的目录；Enter=toggle，Ctrl-e/ Ctrl-d 启用/禁用（在 `~/.codex/skills` 与 `~/.agents/skills` 间 mv）
 - `M-k`（无需 prefix）：Codex prompts 双栏浏览器（需启用 `~/.config/tmux/local/codex.conf` 且安装 `tmux-agent`），默认目录 `~/.codex/prompts`
 - `M-a`（无需 prefix）：pane 选择器（fzf + popup，90% × 90%；上方列表（右侧固定窄宽快捷键提示）；下方全宽预览；`●`=该 pane 所在 window 有未读；未读优先排序），运行 `bash ~/.config/tmux/scripts/scripts_popup.sh popup_ui`（跨 session；再按一次会关闭）
