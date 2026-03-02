@@ -19,6 +19,23 @@ require_cmd() {
   command -v "$1" >/dev/null 2>&1
 }
 
+is_strict_subagent_title() {
+  local title="${1:-}"
+  [[ "$title" == omo-subagent-* ]]
+}
+
+is_opencode_like_pane() {
+  local cmd="${1:-}"
+  local title="${2:-}"
+  if [[ "$cmd" == "opencode" || "$cmd" == "codex" ]]; then
+    return 0
+  fi
+  if [[ "$title" == "OpenCode" || "$title" == OC\ \|* ]]; then
+    return 0
+  fi
+  return 1
+}
+
 truncate_text() {
   local text="${1:-}"
   local max_len="${2:-40}"
@@ -113,14 +130,23 @@ select_and_jump_subagent() {
     tmux list-panes -a -F $'#{session_name}\t#{window_index}\t#{window_name}\t#{pane_index}\t#{pane_id}\t#{pane_active}\t#{pane_current_command}\t#{pane_title}\t#{pane_current_path}' 2>/dev/null | \
     while IFS=$'\t' read -r s_name w_idx w_name p_idx p_id active cmd title p_path; do
       [[ -n "${p_id:-}" ]] || continue
-      [[ "${title:-}" == omo-subagent-* ]] || continue
+      local kind
+      kind=""
+      if is_strict_subagent_title "${title:-}"; then
+        kind="S"
+      elif [[ "$p_id" != "${ORIGIN_PANE_ID:-}" ]] && is_opencode_like_pane "${cmd:-}" "${title:-}"; then
+        kind="H"
+      else
+        continue
+      fi
       target="${s_name}:${w_idx}"
-      printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+      printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
         "$target" \
         "$p_id" \
+        "$kind" \
         "${active:-0}" \
         "${cmd:-}" \
-        "${title#omo-subagent-}" \
+        "$(truncate_text "${title#omo-subagent-}" 42)" \
         "${w_name:-}" \
         "${p_path:-}"
     done
@@ -136,9 +162,9 @@ select_and_jump_subagent() {
       --reverse \
       --exit-0 \
       --delimiter=$'\t' \
-      --with-nth=1,2,3,4,5,6 \
+      --with-nth=1,2,3,4,5,6,7 \
       --prompt='subagent> ' \
-      --header=$'Enter=跳转  Esc=返回' \
+      --header=$'S=严格(omo-subagent-*)  H=经验(opencode/codex/OpenCode)  Enter=跳转  Esc=返回' \
       --preview 'tmux capture-pane -p -t {2} -S -200 2>/dev/null | tail -n 200' \
       --preview-window='down,70%,wrap,follow'
   )" || true
@@ -164,8 +190,8 @@ render_panel() {
   local origin_pane="$1"
   local origin_session_id origin_window_id origin_cmd origin_title origin_path origin_pid
   local now all_panes line
-  local global_count=0
-  local origin_window_count=0
+  local global_count=0 strict_count=0 heuristic_count=0
+  local origin_window_count=0 origin_window_strict=0 origin_window_heuristic=0
   local -a rows_origin=()
   local -a rows_other=()
 
@@ -180,18 +206,32 @@ render_panel() {
   all_panes="$(tmux list-panes -a -F $'#{session_id}\t#{window_id}\t#{pane_id}\t#{pane_active}\t#{pane_current_command}\t#{pane_title}' 2>/dev/null || true)"
 
   while IFS= read -r line; do
-    local s_id w_id p_id active cmd title short_title row
+    local s_id w_id p_id active cmd title short_title row kind
     [[ -n "${line:-}" ]] || continue
     IFS=$'\t' read -r s_id w_id p_id active cmd title <<<"$line"
     [[ -n "${p_id:-}" ]] || continue
-    [[ "${title:-}" == omo-subagent-* ]] || continue
+    kind=""
+    if is_strict_subagent_title "${title:-}"; then
+      kind="S"
+      strict_count=$((strict_count + 1))
+    elif [[ "$p_id" != "$origin_pane" ]] && is_opencode_like_pane "${cmd:-}" "${title:-}"; then
+      kind="H"
+      heuristic_count=$((heuristic_count + 1))
+    else
+      continue
+    fi
 
     global_count=$((global_count + 1))
     short_title="${title#omo-subagent-}"
-    row="$(printf '%-6s %-3s %-12s %-26s' "$p_id" "${active:-0}" "$(truncate_text "$cmd" 12)" "$(truncate_text "$short_title" 26)")"
+    row="$(printf '%-6s %-2s %-3s %-12s %-26s' "$p_id" "$kind" "${active:-0}" "$(truncate_text "$cmd" 12)" "$(truncate_text "$short_title" 26)")"
 
     if [[ "${s_id:-}" == "${origin_session_id:-}" && "${w_id:-}" == "${origin_window_id:-}" ]]; then
       origin_window_count=$((origin_window_count + 1))
+      if [[ "$kind" == "S" ]]; then
+        origin_window_strict=$((origin_window_strict + 1))
+      else
+        origin_window_heuristic=$((origin_window_heuristic + 1))
+      fi
       rows_origin+=("$row")
     else
       rows_other+=("$row")
@@ -209,9 +249,11 @@ render_panel() {
   printf '\n'
   build_opencode_probe "$origin_pid"
   printf '\n'
-  printf 'Subagents(标题匹配 omo-subagent-*): 全局=%d  同窗口=%d  其他窗口=%d\n' "$global_count" "$origin_window_count" "$((global_count - origin_window_count))"
+  printf 'Subagents: 全局=%d(严格=%d/经验=%d)  同窗口=%d(严格=%d/经验=%d)  其他窗口=%d\n' \
+    "$global_count" "$strict_count" "$heuristic_count" \
+    "$origin_window_count" "$origin_window_strict" "$origin_window_heuristic" "$((global_count - origin_window_count))"
   printf '\n'
-  printf '%-6s %-3s %-12s %-26s\n' "Pane" "A" "Cmd" "Title"
+  printf '%-6s %-2s %-3s %-12s %-26s\n' "Pane" "K" "A" "Cmd" "Title"
   printf '%s\n' "---------------------------------------------------------------"
 
   if ((${#rows_origin[@]} == 0)); then
