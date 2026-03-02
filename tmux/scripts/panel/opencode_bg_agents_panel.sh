@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # desc: 后台/bg/oMo：实时观测当前 pane 关联的 background subagent（数量 + 明细）
-# usage: 在 M-p 面板选择；q/Esc 退出，r 手动刷新
+# usage: 在 M-p 面板选择；s 列表跳转，q/Esc 退出，r 手动刷新
 # note: 优先读取 ORIGIN_PANE_ID（由 M-p 注入），并先探测该 pane 的 opencode 进程树
 set -euo pipefail
 
@@ -100,6 +100,66 @@ build_opencode_probe() {
   fi
 }
 
+select_and_jump_subagent() {
+  local origin_client="${ORIGIN_CLIENT:-}"
+  local rows selected target pane_id
+
+  if ! require_cmd fzf; then
+    tmux display-message "未安装 fzf，无法进入选择列表"
+    return 1
+  fi
+
+  rows="$(
+    tmux list-panes -a -F $'#{session_name}\t#{window_index}\t#{window_name}\t#{pane_index}\t#{pane_id}\t#{pane_active}\t#{pane_current_command}\t#{pane_title}\t#{pane_current_path}' 2>/dev/null | \
+    while IFS=$'\t' read -r s_name w_idx w_name p_idx p_id active cmd title p_path; do
+      [[ -n "${p_id:-}" ]] || continue
+      [[ "${title:-}" == omo-subagent-* ]] || continue
+      target="${s_name}:${w_idx}"
+      printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$target" \
+        "$p_id" \
+        "${active:-0}" \
+        "${cmd:-}" \
+        "${title#omo-subagent-}" \
+        "${w_name:-}" \
+        "${p_path:-}"
+    done
+  )"
+
+  if [[ -z "${rows:-}" ]]; then
+    tmux display-message "当前没有可跳转的 oMo subagent pane"
+    return 1
+  fi
+
+  selected="$(
+    printf '%s\n' "$rows" | fzf \
+      --reverse \
+      --exit-0 \
+      --delimiter=$'\t' \
+      --with-nth=1,2,3,4,5,6 \
+      --prompt='subagent> ' \
+      --header=$'Enter=跳转  Esc=返回' \
+      --preview 'tmux capture-pane -p -t {2} -S -200 2>/dev/null | tail -n 200' \
+      --preview-window='down,70%,wrap,follow'
+  )" || true
+
+  if [[ -z "${selected:-}" ]]; then
+    return 1
+  fi
+
+  target="${selected%%$'\t'*}"
+  pane_id="$(printf '%s' "$selected" | cut -f2)"
+  [[ -n "${target:-}" && -n "${pane_id:-}" ]] || return 1
+
+  if [[ -n "${origin_client:-}" ]]; then
+    tmux switch-client -c "$origin_client" -t "$target" >/dev/null 2>&1 || tmux switch-client -t "$target" >/dev/null 2>&1 || true
+  else
+    tmux switch-client -t "$target" >/dev/null 2>&1 || true
+  fi
+  tmux select-pane -t "$pane_id" >/dev/null 2>&1 || true
+  return 0
+}
+
 render_panel() {
   local origin_pane="$1"
   local origin_session_id origin_window_id origin_cmd origin_title origin_path origin_pid
@@ -141,7 +201,7 @@ render_panel() {
   printf '\033[H\033[2J'
   printf 'oMo Background Subagent Panel\n'
   printf '时间: %s\n' "$now"
-  printf '按键: q/Esc 退出 | r 刷新\n'
+  printf '按键: s 选择并跳转 | q/Esc 退出 | r 刷新\n'
   printf '\n'
   printf 'Origin Pane: %s  CMD: %s\n' "$origin_pane" "${origin_cmd:-unknown}"
   printf 'Title: %s\n' "$(truncate_text "${origin_title:-}" 72)"
@@ -203,6 +263,11 @@ while true; do
       q|Q) exit 0 ;;
       $'\e') exit 0 ;;
       r|R) ;;
+      s|S)
+        if select_and_jump_subagent; then
+          exit 0
+        fi
+        ;;
       *) ;;
     esac
   fi
