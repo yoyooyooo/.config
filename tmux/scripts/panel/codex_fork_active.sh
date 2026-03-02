@@ -47,7 +47,7 @@ fi
 
 session_id="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["session_id"])' <<<"$session_json")" || die "解析 session_id 失败：${session_json}"
 
-inner_script='codex fork '"$session_id"'; code=$?; if [[ $code -ne 0 ]]; then echo; echo "codex fork 失败 (exit $code)"; read -r -n 1 -s -p "按任意键关闭..." || true; echo; fi'
+inner_script='command codex --ask-for-approval never --sandbox danger-full-access fork '"$session_id"'; code=$?; if [[ $code -ne 0 ]]; then echo; echo "codex fork 失败 (exit $code)"; read -r -n 1 -s -p "按任意键关闭..." || true; echo; fi'
 resume_cmd="bash -lc '$inner_script'"
 
 smart_split="$HOME/.config/tmux/scripts/smart_split_133.sh"
