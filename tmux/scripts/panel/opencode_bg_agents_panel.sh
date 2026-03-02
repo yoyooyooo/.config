@@ -104,7 +104,7 @@ classify_pane_kind() {
   local pane_id="$1"
   local cmd="$2"
   local title="$3"
-  local pane_pid="$4"
+  local engine_alive="$4"
   local origin_pane="$5"
 
   if is_strict_subagent_title "$title"; then
@@ -117,7 +117,7 @@ classify_pane_kind() {
     return 0
   fi
 
-  if [[ "$pane_id" != "$origin_pane" ]] && pane_has_engine_process "$pane_pid"; then
+  if [[ "$pane_id" != "$origin_pane" ]] && [[ "${engine_alive:-0}" == "1" ]]; then
     printf 'P'
     return 0
   fi
@@ -126,20 +126,38 @@ classify_pane_kind() {
   return 0
 }
 
+compute_pane_tail_hash() {
+  local pane_id="$1"
+  local captured hash
+  captured="$(tmux capture-pane -p -t "$pane_id" -S -80 2>/dev/null | tail -n 80 || true)"
+  if require_cmd md5; then
+    hash="$(printf '%s' "$captured" | md5 2>/dev/null | awk '{print $NF}')"
+  elif require_cmd shasum; then
+    hash="$(printf '%s' "$captured" | shasum 2>/dev/null | awk '{print $1}')"
+  else
+    hash="$(printf '%s' "$captured" | wc -c | awk '{print $1}')"
+  fi
+  printf '%s' "${hash:-0}"
+}
+
 refresh_snapshot_once() {
   local origin_pane="$1"
   local rows_file="$2"
   local summary_file="$3"
+  local idle_threshold="${4:-8}"
 
   local rows_tmp="${rows_file}.tmp"
   local summary_tmp="${summary_file}.tmp"
-  local line
+  local line now_ts
   local total=0 strict=0 heuristic=0 proc=0 candidates=0 opencode_like=0
+  local run_count=0 idle_count=0 done_count=0
 
   : >"$rows_tmp"
+  now_ts="$(date +%s)"
 
   while IFS= read -r line; do
     local s_name w_idx w_name p_idx p_id active cmd title p_path pane_pid kind target clean_title
+    local engine_alive status hash prev_line prev_hash prev_changed changed_at age
     [[ -n "${line:-}" ]] || continue
     IFS=$'\t' read -r s_name w_idx w_name p_idx p_id active cmd title p_path pane_pid <<<"$line"
     [[ -n "${p_id:-}" ]] || continue
@@ -148,7 +166,13 @@ refresh_snapshot_once() {
       opencode_like=$((opencode_like + 1))
     fi
 
-    kind="$(classify_pane_kind "$p_id" "${cmd:-}" "${title:-}" "${pane_pid:-}" "$origin_pane")"
+    if pane_has_engine_process "${pane_pid:-}"; then
+      engine_alive=1
+    else
+      engine_alive=0
+    fi
+
+    kind="$(classify_pane_kind "$p_id" "${cmd:-}" "${title:-}" "$engine_alive" "$origin_pane")"
     [[ -n "${kind:-}" ]] || continue
 
     total=$((total + 1))
@@ -158,6 +182,31 @@ refresh_snapshot_once() {
       P) proc=$((proc + 1)) ;;
     esac
 
+    hash="$(compute_pane_tail_hash "$p_id")"
+    prev_line="$(awk -F '\t' -v id="$p_id" '$2==id {print; exit}' "$rows_file" 2>/dev/null || true)"
+    prev_hash="$(printf '%s' "$prev_line" | cut -f10)"
+    prev_changed="$(printf '%s' "$prev_line" | cut -f11)"
+
+    if [[ "$engine_alive" != "1" ]]; then
+      status="DONE"
+      done_count=$((done_count + 1))
+      changed_at="${prev_changed:-$now_ts}"
+    elif [[ -z "${prev_hash:-}" || "$hash" != "$prev_hash" ]]; then
+      status="RUN"
+      run_count=$((run_count + 1))
+      changed_at="$now_ts"
+    else
+      changed_at="${prev_changed:-$now_ts}"
+      age=$((now_ts - changed_at))
+      if (( age >= idle_threshold )); then
+        status="IDLE"
+        idle_count=$((idle_count + 1))
+      else
+        status="RUN"
+        run_count=$((run_count + 1))
+      fi
+    fi
+
     if [[ "$p_id" == "$origin_pane" ]]; then
       continue
     fi
@@ -165,15 +214,18 @@ refresh_snapshot_once() {
     target="${s_name}:${w_idx}"
     clean_title="${title#omo-subagent-}"
 
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
       "$target" \
       "$p_id" \
       "$kind" \
+      "$status" \
       "${active:-0}" \
       "$(truncate_text "${cmd:-}" 20)" \
       "$(truncate_text "${clean_title:-}" 46)" \
       "$(truncate_text "${w_name:-}" 20)" \
       "$(truncate_text "${p_path:-}" 56)" \
+      "$hash" \
+      "$changed_at" \
       >>"$rows_tmp"
 
     candidates=$((candidates + 1))
@@ -181,7 +233,8 @@ refresh_snapshot_once() {
 
   {
     printf '识别: 全部=%d (S=%d H=%d P=%d)  可切=%d  opencode-like(含当前)=%d\n' "$total" "$strict" "$heuristic" "$proc" "$candidates" "$opencode_like"
-    printf '按键: ↑↓ 选择  Enter 跳转  Ctrl-r 刷新  Esc 退出\n'
+    printf '状态: RUN=%d IDLE=%d DONE=%d (IDLE阈值=%ss)\n' "$run_count" "$idle_count" "$done_count" "$idle_threshold"
+    printf '按键: ↑↓ 选择  Enter 跳转  Ctrl-r 刷新(后台轮询快照)  Esc 退出\n'
     printf 'Kind: S=严格(omo-subagent-*) H=经验(title/cmd) P=进程树(opencode/codex)\n'
   } >"$summary_tmp"
 
@@ -253,15 +306,14 @@ run_picker() {
       --reverse \
       --exit-0 \
       --delimiter=$'\t' \
-      --with-nth=1,2,3,4,5,6,7 \
+      --with-nth=1,2,3,4,5,6,7,8 \
       --prompt='subagent> ' \
       --header "$header" \
       --header-lines=0 \
-      --preview 'printf "PATH: %s\\n----\\n" {8}; tmux capture-pane -p -t {2} -S -200 2>/dev/null | tail -n 200' \
+      --preview 'printf "PATH: %s\\n----\\n" {9}; tmux capture-pane -p -t {2} -S -200 2>/dev/null | tail -n 200' \
       --preview-window='down,70%,wrap,follow' \
       --bind "start:reload(cat '$rows_file')" \
-      --bind "ctrl-r:reload(cat '$rows_file')" \
-      --bind "up:up+reload(cat '$rows_file'),down:down+reload(cat '$rows_file'),pgup:page-up+reload(cat '$rows_file'),pgdn:page-down+reload(cat '$rows_file')"
+      --bind "ctrl-r:reload(cat '$rows_file')"
   )" || true
 
   if [[ -z "${selected:-}" ]]; then
