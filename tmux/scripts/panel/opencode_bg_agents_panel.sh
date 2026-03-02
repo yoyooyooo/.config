@@ -192,6 +192,7 @@ render_panel() {
   local now all_panes line
   local global_count=0 strict_count=0 heuristic_count=0
   local origin_window_count=0 origin_window_strict=0 origin_window_heuristic=0
+  local opencode_like_total=0
   local -a rows_origin=()
   local -a rows_other=()
 
@@ -210,6 +211,9 @@ render_panel() {
     [[ -n "${line:-}" ]] || continue
     IFS=$'\t' read -r s_id w_id p_id active cmd title <<<"$line"
     [[ -n "${p_id:-}" ]] || continue
+    if is_opencode_like_pane "${cmd:-}" "${title:-}"; then
+      opencode_like_total=$((opencode_like_total + 1))
+    fi
     kind=""
     if is_strict_subagent_title "${title:-}"; then
       kind="S"
@@ -252,6 +256,7 @@ render_panel() {
   printf 'Subagents: 全局=%d(严格=%d/经验=%d)  同窗口=%d(严格=%d/经验=%d)  其他窗口=%d\n' \
     "$global_count" "$strict_count" "$heuristic_count" \
     "$origin_window_count" "$origin_window_strict" "$origin_window_heuristic" "$((global_count - origin_window_count))"
+  printf 'Debug: opencode-like panes(含当前)=%d\n' "$opencode_like_total"
   printf '\n'
   printf '%-6s %-2s %-3s %-12s %-26s\n' "Pane" "K" "A" "Cmd" "Title"
   printf '%s\n' "---------------------------------------------------------------"
