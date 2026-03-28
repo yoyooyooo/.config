@@ -63,28 +63,22 @@ macOS（Codex 通知/点击回跳）必需：
   - `move_session.sh`：把当前 session 左/右移动（调用 `session_manager.py move`）
   - `move_window_to_session.sh`：把当前 window 移到指定序号的 session（调用 `session_manager.py move-window-to`）
   - `new_session.sh`：新建 session 并触发连续编号（调用 `session_manager.py ensure`）
-  - `next_unread_window.sh`：跳到“下一个未读 window”（必要时跨 session；可优先 Codex done marker）
-  - `record_window_seen.sh`：记录 window 最近“看过”顺序（供 `next_unread_window.sh` 做全局轮换）
   - `notify_hud_btt.py`：触发 BetterTouchTool HUD（失败则回退为系统通知）
   - `notify_macos.py`：macOS 通知助手（优先 terminal-notifier；支持 group/remove/点击动作）
   - `pane_starship_title.sh`：pane 顶部标题渲染（优先 starship；否则回退为 cmd+目录）
-  - `pane_unread.sh`：pane 未读标记（mark/clear/indicator；用于 window list 的 `●`）
   - `paste_from_clipboard.sh`：系统剪贴板 → tmux buffer → paste
   - `rename_session_prompt.sh`：重命名 session（调用 `session_manager.py rename`）
   - `scripts_popup.sh`：pane 选择器 popup（fzf + 预览；支持 kill/move/swap）
   - `session_created.sh`：session-created hook（调用 `session_manager.py created`）
   - `session_manager.py`：会话编号/排序/改名/移动/窗口迁移的核心逻辑
   - `spec_preview.sh`：Spec 预览：三列联动（spec → US → task）+ 文件浏览（fzf + bat + nvim/less；tmux 内用嵌套 tmux 分屏预览更稳定）
-  - `switch_session_by_index.sh`：按 `N-` 前缀切换 session（可自动跳到该 session 的首个未读 window）
+  - `switch_session_by_index.sh`：按 `N-` 前缀切换 session
   - `switch_session_relative.sh`：当前 `N-` session 的左右切换（内部调用 `switch_session_by_index.sh`）
-  - `switch_to_first_unread_window.sh`：跳到当前 session 的首个未读 window
   - `tmux_btt_hud_notify.sh`：BetterTouchTool HUD 触发器（osascript；被其他脚本复用）
   - `tmux_cross_session_notify.sh`：跨 session 切换提示（优先 BTT HUD，否则 tmux message）
   - `tmux_input_method_en.sh`：进入 copy-mode 时切英文输入法（macOS；best-effort；依赖 macism 或 im-select）
   - `toggle_orientation.sh`：两窗格横/竖切换（仅限 2 panes）
   - `toggle_scratchpad.sh`：scratchpad window 开关（不存在则创建）
-  - `unread_windows_count.sh`：统计 session 未读 window 数（输出 `●N`，状态栏复用）
-  - `window_is_ignored.sh`：判定某个 window 是否应从“未读计数/轮转”中忽略（按前台进程命令匹配；优先看 pane 的 TTY 前台进程；若该 TTY 仅看到 shell，则扫描 `#{pane_pid}` 的子进程树做补偿；默认屏蔽 Vite/Webpack/Next/Storybook 等 Dev Server 噪音输出）
   - `update_inactive_pane_bg.sh`：多 pane 时仅给 active pane 设纯黑背景，inactive pane 保持 `default` 透出终端底色；单 pane 时两者都保持 `default`
   - `update_theme_color.sh`：从 `TMUX_THEME_COLOR` 更新主题色与活动边框
   - `window_auto_name.sh`：window 自动命名（优先 git branch，其次 repo 名，最后目录名）
@@ -139,7 +133,7 @@ macOS（Codex 通知/点击回跳）必需：
   - 示例：`opencode_bg_agents_panel.sh`（实时观测 origin pane 关联的 oMo background subagent 数量与明细）
 - `M-\`（无需 prefix）：skills 管理器（fzf + popup），仅列出含 `SKILL.md` 的目录；Enter=toggle，Ctrl-e/ Ctrl-d 启用/禁用（在 `~/.codex/skills` 与 `~/.agents/skills` 间 mv）
 - `M-k`（无需 prefix）：Codex prompts 双栏浏览器（需启用 `~/.config/tmux/local/codex.conf` 且安装 `tmux-agent`），默认目录 `~/.codex/prompts`
-- `M-a`（无需 prefix）：pane 选择器（fzf + popup，90% × 90%；上方列表（右侧固定窄宽快捷键提示）；下方全宽预览；`●`=该 pane 所在 window 有未读；未读优先排序），运行 `bash ~/.config/tmux/scripts/scripts_popup.sh popup_ui`（跨 session；再按一次会关闭）
+- `M-a`（无需 prefix）：pane 选择器（fzf + popup，90% × 90%；上方列表（右侧固定窄宽快捷键提示）；下方全宽预览），运行 `bash ~/.config/tmux/scripts/scripts_popup.sh popup_ui`（跨 session；再按一次会关闭）
 - `prefix a`：同上（备用）
 - `M-g`（无需 prefix）：弹出 lazygit（popup 90% × 90%，工作目录继承当前激活 pane）
 - `M-/`（无需 prefix）：nvim popup 开关（启动时自动打开左侧文件树；popup 内按 `q` 可退出；再按一次会请求 nvim 退出（有未保存会提示）；若 Option 被设为 Normal，可用 `÷` 触发）
@@ -180,7 +174,6 @@ macOS（Codex 通知/点击回跳）必需：
     - tmux：`cp ~/.config/tmux/backups/tmux.conf.bak-20260113-095440 ~/.config/tmux/tmux.conf` 后执行 `tmux source-file ~/.tmux.conf`
     - iTerm2：`cp ~/Library/Preferences/com.googlecode.iterm2.plist.bak-20260113-095440 ~/Library/Preferences/com.googlecode.iterm2.plist` 后 `Cmd+Q` 彻底退出 iTerm2 并重开
 - `C-1..C-9`（无需 prefix）：切到编号为 1..9 的 session（按 session 名字前缀 `^N-` 匹配）
-- 切换 session（含鼠标点状态栏 session tabs）时：若目标 session 有未读 window，会自动跳到该 session 的第一个未读 window；无未读则保持默认落点
 - 如果 `C-1..C-9` 在 iTerm2 里按了没反应（用 `python3 ~/.config/tmux/scripts/keyprobe_keys.py record` 测到的仍是普通字符 `1/2/...`），在 iTerm2 里把 `C-1..C-9` 映射为 `S-F1..S-F9` 的序列：
   - `C-1` → `0x1b 0x5b 0x31 0x3b 0x32 0x50`（`\e[1;2P`）
   - `C-2` → `0x1b 0x5b 0x31 0x3b 0x32 0x51`（`\e[1;2Q`）
@@ -200,7 +193,7 @@ macOS（Codex 通知/点击回跳）必需：
 ### 3.3 窗口（window）
 
 - `M-n`（无需 prefix）：新建 window（工作目录继承当前 pane）
-- `M-w`（无需 prefix）：弹出 window 选择器（fzf + popup，跨 session；`●`=未读；未读优先排序；再按一次会关闭）
+- `M-w`（无需 prefix）：弹出 window 选择器（fzf + popup，跨 session；再按一次会关闭）
 - `Option+[` / `Option+]`（`M-[ / M-]`；无需 prefix）：上一个 / 下一个 window
 - `Option+-` / `Option+=`（`M-- / M-=`；无需 prefix）：交换当前 window 与前/后 window（`swap-window`）
   - 备用：`Option+u/o`（`M-u / M-o`）同上（更不容易被输入法吞）
@@ -211,18 +204,6 @@ macOS（Codex 通知/点击回跳）必需：
   - `Option+=` → Send Hex Codes: `0x1b 0x5b 0x31 0x31 0x31 0x7e`（`\e[111~`；tmux 识别为 `User8`，等价执行 window 换序 →）
 - 备注：如果你用 BetterTouchTool/Keyboard Maestro 等“模拟按键”，触发后变成输入 `—`/`±`（而不是切换/换序 window），说明它走的是“输入字符”的路径，绕过了 iTerm2 的 Meta/Send Hex；建议直接让自动化工具发送 `F6/F7`（切换）+ `F8/F9`（换序）（最稳）来控制 window。
 - 备注：滚轮滚动会进入 tmux 的 copy-mode；为避免 copy-mode 下“看起来坏了”，tmux 也在 copy-mode 里绑定了 `F6/F7/F8/F9` 等价执行（如果你想先退出 copy-mode，可按 `q`）。
-- `M-Tab`（无需 prefix）：在所有 session 的“未读 window”里轮流切换（按最近访问做 LRU，把刚切过的放到队尾）
-  - 优先级：Codex `agent-turn-complete` marker → 全局未读 window（LRU）
-  - 可选：如需先在当前 window 内跳到未读 pane，可 `tmux set -g @next_unread_prioritize_current_panes 1`（默认关闭，避免某些持续输出 pane 导致 M-Tab “卡在当前 window”）
-  - “未读 window”来源：自定义 `@unread_activity`（`pipe-pane` 监听 pane 输出写入）或 tmux 内置 `window_activity_flag/window_bell_flag/window_silence_flag`
-  - 噪音过滤：当仅因 `window_activity_flag` 触发时，按前台进程命令匹配忽略（优先看 pane 的 TTY 前台进程；若该 TTY 仅看到 shell，则扫描 `#{pane_pid}` 的子进程树；默认覆盖 Vite/Webpack/Next/Storybook 等 Dev Server；可用 `TMUX_UNREAD_IGNORE_FG_RE` 调整）
-  - 默认忽略 session 名称包含“后台”的会话（可用 `TMUX_NEXT_UNREAD_EXCLUDE_SESSION_SUBSTR` 调整；支持逗号分隔多个子串；置空关闭）
-  - 可用 `TMUX_NEXT_UNREAD_PRIORITIZE_CODEX_DONE=0` 关闭 Codex done 优先级
-  - 排错：`tmux set -g @next_unread_debug 1` 开启调试日志（写入 `~/.config/tmux/run/next-unread/debug.*.log`）；关闭：`tmux set -gu @next_unread_debug`
-  - 可选显眼提示：如果你在 BetterTouchTool 里建了 Named Trigger `btt-hud-overlay`（动作：Show HUD Overlay；文案：`{hud_title}` + `{hud_body}`），跨 session 跳转时会触发 HUD；默认会尽量避免用 tmux message 覆盖 window list
-    - 强制显示 tmux message：`tmux set -g @tmux_cross_session_show_tmux_message on`
-    - 调整 tmux message 时长（ms）：`tmux set -g @tmux_cross_session_tmux_message_delay_ms 800`
-    - 关闭 HUD 尝试：`tmux set -g @tmux_cross_session_btt_hud_trigger off`
 - `M-1..M-9`（无需 prefix）：跳转到 window 1..9
 - `prefix .`：重命名 window
 - `prefix C-p` / `prefix C-n`：上一个/下一个 window
@@ -408,8 +389,8 @@ tmux refresh-client -S
 
 ### 9.3 状态栏 left / right
 
-- 状态栏第 1 行：session tabs 各 session 标题左侧显示计数标记：黄色 `●N`=该 session 未读 window 数（`@unread_activity` + tmux `window_activity_flag/window_bell_flag/window_silence_flag`；仅因 `window_activity_flag` 触发的噪音 window 会按前台进程规则过滤）
-- window tabs（底部）：提示圆点 `●`：绿色=Codex 完成未确认（`@codex_done=1`）；黄色=未读（`@unread_activity=1`）；当前 window 不显示圆点。`pipe-pane` 监听 pane 输出写入；另外当 window 因 tmux `activity/bell/silence` 被计入未读时也会镜像写入 `@unread_activity` 以保证显示一致；噪音 pane 命中后会缓存 `@unread_ignore_activity=1`（粘性，避免每次输出都做 `ps` 检测），如需重新判定可手动清除：`tmux set -p -t %123 -u @unread_ignore_activity -u @unread_ignore_checked -u @unread_ignore_check_count -u @unread_ignore_checked_at`（可用 `TMUX_UNREAD_IGNORE_FG_RE` / `TMUX_UNREAD_IGNORE_MAX_CHECKS` / `TMUX_UNREAD_IGNORE_RECHECK_SECONDS` 调整）；索引与标题之间用 pane 数标记替代冒号（1-8：`·⠆⠖⠶⡶⡷⣷⣿`，超过 8 仍显示 `⣿`）
+- 状态栏第 1 行：session tabs 不再显示计数提示
+- window tabs（底部）：只保留 Codex 完成标记 `✓` 与 zoom 标记 `⛶`；索引与标题之间用 pane 数标记替代冒号（1-8：`·⠆⠖⠶⡶⡷⣷⣿`，超过 8 仍显示 `⣿`）
 
 - Left：`~/.config/tmux/tmux-status/left.sh`
   - 高亮当前 session；窄屏时会自动精简显示

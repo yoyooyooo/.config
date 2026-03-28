@@ -43,30 +43,8 @@ fi
 
 target_id="${target%%::*}"
 target_name="${target#*::}"
-
-first_unread_window="$(
-  tmux list-windows -t "${target_id}" -F $'#{window_index}\t#{?#{==:#{@unread_activity},1},1,0}' 2>/dev/null \
-    | sort -n -k1,1 \
-    | while IFS=$'\t' read -r win_index custom_unread; do
-        if [[ "${custom_unread:-0}" != "1" ]]; then
-          continue
-        fi
-        printf '%s\n' "${win_index}"
-        break
-      done
-)"
-
-target_spec_id="${target_id}"
-target_spec_name="${target_name}"
-if [[ -n "${first_unread_window:-}" ]]; then
-  target_spec_id="${target_id}:${first_unread_window}"
-  if [[ -n "${target_name:-}" ]]; then
-    target_spec_name="${target_name}:${first_unread_window}"
-  fi
-fi
-
-switch_client "${target_spec_id}"
+switch_client "${target_id}"
 if [[ -n "${target_name:-}" ]]; then
-  switch_client "${target_spec_name}"
+  switch_client "${target_name}"
 fi
 refresh

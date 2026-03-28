@@ -610,7 +610,7 @@ panes_src_simple() {
     if [[ -z "$origin_pane_id" && -n "${OUTER_CLIENT:-}" ]]; then
         origin_pane_id="$(tmux_outer display-message -p -c "$OUTER_CLIENT" '#{pane_id}' 2>/dev/null || true)"
     fi
-    format=$'#D\t#{session_id}\t#{window_id}\t#{?#{==:#{@unread_pane_activity},1},1,0}\t#{=|48|…:session_name}\t#I:#{=|56|…:window_name}\t#P\t#{=|80|…:pane_title}\t#{pane_current_command}\t#{pane_current_path}'
+    format=$'#D\t#{session_id}\t#{window_id}\t#{=|48|…:session_name}\t#I:#{=|56|…:window_name}\t#P\t#{=|80|…:pane_title}\t#{pane_current_command}\t#{pane_current_path}'
 
     out="$(
         tmux_outer list-panes -aF "$format" |
@@ -621,13 +621,9 @@ panes_src_simple() {
                   seen_n = 0
                 }
                 ex == "" || $3 != ex || $1 == origin {
-                  # PANEID SESSION_ID WINDOW_ID ACTIVITY SESSION WIN PANE TITLE CMD PATH
+                  # PANEID SESSION_ID WINDOW_ID SESSION WIN PANE TITLE CMD PATH
                   id = $1
-                  is_unread = ($4 == 1 ? 1 : 0)
-                  unread_mark = (is_unread == 1 ? "● " : "  ")
-                  win = unread_mark $6
-                  row[id] = id "\t" $2 "\t" $3 "\t" $5 "\t" win "\t" $7 "\t" $8 "\t" $9 "\t" $10
-                  unread[id] = is_unread
+                  row[id] = id "\t" $2 "\t" $3 "\t" $4 "\t" $5 "\t" $6 "\t" $7 "\t" $8 "\t" $9
                   seen[++seen_n] = id
                 }
                 END {
@@ -635,42 +631,21 @@ panes_src_simple() {
                   if (origin != "" && (origin in row)) {
                     print row[origin]
                     delete row[origin]
-                    delete unread[origin]
                   }
-                  # 1) unread first (MRU order)
-                  for (i = 1; i <= n; i++) {
-                    id = order[i]
-                    if (id in row && unread[id] == 1) {
-                      print row[id]
-                      delete row[id]
-                      delete unread[id]
-                    }
-                  }
-                  # 2) unread remaining (source order)
-                  for (j = 1; j <= seen_n; j++) {
-                    id = seen[j]
-                    if (id in row && unread[id] == 1) {
-                      print row[id]
-                      delete row[id]
-                      delete unread[id]
-                    }
-                  }
-                  # 3) read (MRU order)
+                  # 1) MRU order
                   for (i = 1; i <= n; i++) {
                     id = order[i]
                     if (id in row) {
                       print row[id]
                       delete row[id]
-                      delete unread[id]
                     }
                   }
-                  # 4) read remaining (source order)
+                  # 2) source order
                   for (j = 1; j <= seen_n; j++) {
                     id = seen[j]
                     if (id in row) {
                       print row[id]
                       delete row[id]
-                      delete unread[id]
                     }
                   }
                 }

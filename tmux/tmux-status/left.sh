@@ -74,16 +74,6 @@ extract_index() {
   fi
 }
 
-unread_counts="$(
-  tmux list-windows -a -F $'#{session_id}\t#{?#{==:#{@unread_activity},1},1,0}' 2>/dev/null \
-    | awk -F $'\t' '
-        $2 == 1 {
-          c[$1]++
-        }
-        END { for (sid in c) printf "%s\t%d\n", sid, c[sid] }
-      ' || true
-)"
-
 sessions=$(tmux list-sessions -F $'#{session_id}\t#{session_name}' 2>/dev/null || true)
 if [[ -z "$sessions" ]]; then
   exit 0
@@ -123,26 +113,7 @@ while IFS=$'\t' read -r session_id name; do
   fi
 
   prefix_render=""
-  prefix_plain=""
-  prefix_len=0
-  unread_count="$(awk -F $'\t' -v id="${session_id}" '$1 == id { print $2; found=1; exit } END { if (!found) print 0 }' <<<"${unread_counts}")"
-  if [[ "${unread_count}" =~ ^[0-9]+$ ]] && (( unread_count > 0 )); then
-    prefix_plain+="●${unread_count}"
-  fi
-  if [[ -n "${prefix_plain}" ]]; then
-    prefix_plain+=" "
-    prefix_len=${#prefix_plain}
-    if [[ "${unread_count}" =~ ^[0-9]+$ ]] && (( unread_count > 0 )); then
-      prefix_render+="#[fg=colour208,bold]●${unread_count}"
-    fi
-    prefix_render+="#[fg=${segment_fg},nobold] "
-  fi
-
   label_max_width=$max_width
-  if (( prefix_len > 0 )); then
-    label_max_width=$(( max_width - prefix_len ))
-    (( label_max_width < 1 )) && label_max_width=1
-  fi
   if (( ${#label} > label_max_width )); then
     label="${label:0:label_max_width-1}…"
   fi
