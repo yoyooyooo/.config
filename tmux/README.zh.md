@@ -85,7 +85,7 @@ macOS（Codex 通知/点击回跳）必需：
   - `toggle_scratchpad.sh`：scratchpad window 开关（不存在则创建）
   - `unread_windows_count.sh`：统计 session 未读 window 数（输出 `●N`，状态栏复用）
   - `window_is_ignored.sh`：判定某个 window 是否应从“未读计数/轮转”中忽略（按前台进程命令匹配；优先看 pane 的 TTY 前台进程；若该 TTY 仅看到 shell，则扫描 `#{pane_pid}` 的子进程树做补偿；默认屏蔽 Vite/Webpack/Next/Storybook 等 Dev Server 噪音输出）
-  - `update_inactive_pane_bg.sh`：多 pane 时设置 inactive pane 背景色（提升聚焦感）
+  - `update_inactive_pane_bg.sh`：多 pane 时仅给 active pane 设纯黑背景，inactive pane 保持 `default` 透出终端底色；单 pane 时两者都保持 `default`
   - `update_theme_color.sh`：从 `TMUX_THEME_COLOR` 更新主题色与活动边框
   - `window_auto_name.sh`：window 自动命名（优先 git branch，其次 repo 名，最后目录名）
   - `window_rename_from_path.sh`：按路径自动重命名 window（未手动改名时生效）

@@ -11,16 +11,11 @@ if [[ -z "${panes}" ]]; then
   exit 0
 fi
 
-inactive_bg="$(tmux show-option -gqv @inactive_pane_bg 2>/dev/null || true)"
-if [[ -z "${inactive_bg}" ]]; then
-  inactive_bg="#0b1220"
-fi
-
 if [[ "${panes}" =~ ^[0-9]+$ ]] && (( panes > 1 )); then
-  tmux set-window-option -t "${target_window_id}" window-style "bg=${inactive_bg}"
-  tmux set-window-option -t "${target_window_id}" window-active-style "bg=default"
+  # 多 pane 时只突出 active pane，inactive pane 透出终端默认底色。
+  tmux set-window-option -t "${target_window_id}" window-style "bg=default"
+  tmux set-window-option -t "${target_window_id}" window-active-style "bg=black"
 else
   tmux set-window-option -t "${target_window_id}" window-style "bg=default"
   tmux set-window-option -t "${target_window_id}" window-active-style "bg=default"
 fi
-

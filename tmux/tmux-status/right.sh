@@ -17,13 +17,13 @@ if [[ -n "${width:-}" && "$width" =~ ^[0-9]+$ ]]; then
 fi
 
 status_bg=$(tmux show -gqv status-bg)
-if [[ -z "$status_bg" || "$status_bg" == "default" ]]; then
-  status_bg=black
+if [[ -z "$status_bg" ]]; then
+  status_bg=default
 fi
 
 segment_bg="#3b4252"
 segment_fg="#eceff4"
-separator=""
+separator=""
 right_cap="█"
 rainbarf_bg="#2e3440"
 rainbarf_segment=""
