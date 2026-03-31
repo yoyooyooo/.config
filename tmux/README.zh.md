@@ -79,7 +79,7 @@ macOS（Codex 通知/点击回跳）必需：
   - `tmux_input_method_en.sh`：进入 copy-mode 时切英文输入法（macOS；best-effort；依赖 macism 或 im-select）
   - `toggle_orientation.sh`：两窗格横/竖切换（仅限 2 panes）
   - `toggle_scratchpad.sh`：scratchpad window 开关（不存在则创建）
-  - `update_inactive_pane_bg.sh`：多 pane 时仅给 active pane 设纯黑背景，inactive pane 保持 `default` 透出终端底色；单 pane 时两者都保持 `default`
+  - `update_inactive_pane_bg.sh`：多 pane 时仅给 active pane 设纯黑背景，inactive pane 保持 `default` 透出终端底色；单 pane 时两者都保持 `default`。当前仅在真实的 window 选择或 pane 布局变化时更新，不在终端窗口重新获得焦点时触发
   - `update_theme_color.sh`：从 `TMUX_THEME_COLOR` 更新主题色与活动边框
   - `window_auto_name.sh`：window 自动命名（优先 git branch，其次 repo 名，最后目录名）
   - `window_rename_from_path.sh`：按路径自动重命名 window（未手动改名时生效）
@@ -94,7 +94,7 @@ macOS（Codex 通知/点击回跳）必需：
 	    - `window_switcher.sh`：fzf 选择任意 session 的 window 并切换（预览 panes + 输出）
 - Codex 集成（tmux-agent）：`~/.config/tmux/local/codex.conf`
   - `tmux-agent codex notify`：Codex notify 入口（在 `~/.codex/config.toml` 配置）
-  - `tmux-agent codex notify-ack`：pane focus 确认/清除完成标记
+  - `tmux-agent codex notify-ack`：Codex turn-complete 标记确认命令（保留为手动/兼容入口；当前默认焦点确认走 core 里的 `codex_notify_ack_turn_complete.sh`）
   - `tmux-agent codex notify-switch-done`：跨窗格切换后提示 Codex 完成（可选）
   - `tmux-agent codex prompts browse|pick`：prompts 浏览/选择
   - `tmux-agent codex copy-conversation|reload-active|worktree-reload-followup|spawn|session-info`
@@ -385,7 +385,7 @@ tmux refresh-client -S
 
 - `~/.config/tmux/scripts/pane_starship_title.sh`
 
-有 `starship` 时，它会用 `~/.config/tmux/starship-tmux.toml` 渲染标题；没有则降级为 `命令 — 目录名`。
+有 `starship` 时，它会用 `~/.config/tmux/starship-tmux.toml` 渲染标题；没有则降级为 `命令 — 目录名`。当前按 pane 做了短 TTL 缓存，避免终端获焦或快速 redraw 时重复启动 `starship`。
 
 ### 9.3 状态栏 left / right
 
