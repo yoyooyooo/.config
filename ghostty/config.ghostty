@@ -1,0 +1,7 @@
+
+font-size = 14
+macos-option-as-alt = true
+
+# Keep Alt+F for tmux zoom, but make Alt+Right send a real modified arrow
+# sequence instead of Ghostty's default esc:f, so it no longer aliases M-f.
+keybind = alt+arrow_right=text:\x1b[1;3C

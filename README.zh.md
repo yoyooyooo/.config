@@ -5,6 +5,7 @@
 ## 内容
 
 - `tmux/`：tmux 配置（见 `tmux/README.md` / `tmux/README.zh.md`）
+- `ghostty/`：Ghostty 配置，适用于 macOS 上的 Ghostty 或 cmux 运行时（见 `ghostty/README.md` / `ghostty/README.zh.md`）
 
 ## 快速开始
 
@@ -13,3 +14,6 @@
 
   `source-file ~/.config/tmux/tmux.conf`
 
+- macOS 上的 Ghostty 需要把 `ghostty/config.ghostty` 复制或 symlink 到：
+
+  `~/Library/Application Support/com.mitchellh.ghostty/config.ghostty`
