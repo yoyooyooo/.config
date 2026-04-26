@@ -601,61 +601,7 @@ panes_src() {
 }
 
 panes_src_simple() {
-    exclude_window_id="$(tmux_outer show -gqv '@fzf_exclude_window_id')"
-    mru="$(tmux_outer show -gqv '@mru_pane_ids')"
-    origin_pane_id="${ORIGIN_PANE_ID:-}"
-    if [[ -z "$origin_pane_id" ]]; then
-        origin_pane_id="$(tmux_outer show -gqv '@panes_popup_origin_pane_id')"
-    fi
-    if [[ -z "$origin_pane_id" && -n "${OUTER_CLIENT:-}" ]]; then
-        origin_pane_id="$(tmux_outer display-message -p -c "$OUTER_CLIENT" '#{pane_id}' 2>/dev/null || true)"
-    fi
-    format=$'#D\t#{session_id}\t#{window_id}\t#{=|48|…:session_name}\t#I:#{=|56|…:window_name}\t#P\t#{=|80|…:pane_title}\t#{pane_current_command}\t#{pane_current_path}'
-
-    out="$(
-        tmux_outer list-panes -aF "$format" |
-            awk -v ex="$exclude_window_id" -v mru="$mru" -v origin="$origin_pane_id" -F'\t' '
-                BEGIN {
-                  print "PANEID\tSESSION_ID\tWINDOW_ID\tSESSION\tWIN\tPANE\tTITLE\tCMD\tPATH"
-                  n = split(mru, order, " ")
-                  seen_n = 0
-                }
-                ex == "" || $3 != ex || $1 == origin {
-                  # PANEID SESSION_ID WINDOW_ID SESSION WIN PANE TITLE CMD PATH
-                  id = $1
-                  row[id] = id "\t" $2 "\t" $3 "\t" $4 "\t" $5 "\t" $6 "\t" $7 "\t" $8 "\t" $9
-                  seen[++seen_n] = id
-                }
-                END {
-                  # 0) origin pane first (if present)
-                  if (origin != "" && (origin in row)) {
-                    print row[origin]
-                    delete row[origin]
-                  }
-                  # 1) MRU order
-                  for (i = 1; i <= n; i++) {
-                    id = order[i]
-                    if (id in row) {
-                      print row[id]
-                      delete row[id]
-                    }
-                  }
-                  # 2) source order
-                  for (j = 1; j <= seen_n; j++) {
-                    id = seen[j]
-                    if (id in row) {
-                      print row[id]
-                      delete row[id]
-                    }
-                  }
-                }
-            '
-    )"
-
-    ids="$(printf '%s\n' "$out" | sed 1d | awk -F'\t' '{print $1}' | tr '\n' ' ')"
-    ids="${ids% }"
-    tmux_outer set -g '@mru_pane_ids' "$ids"
-    printf '%s\n' "$out"
+    python3 "$HOME/.config/tmux/scripts/activity_rank.py" panes
 }
 
 $@

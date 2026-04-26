@@ -10,7 +10,7 @@ if ! command -v fzf >/dev/null 2>&1; then
   exit 0
 fi
 
-sessions="$(tmux list-sessions -F '#{session_name}' 2>/dev/null || true)"
+sessions="$(python3 "$HOME/.config/tmux/scripts/activity_rank.py" sessions 2>/dev/null || true)"
 if [[ -z "${sessions:-}" ]]; then
   printf '%s\n' "没有可切换的 session。"
   read -r -n 1 -s -p "按任意键关闭..." || true
@@ -22,11 +22,16 @@ selected="$(
   printf '%s\n' "$sessions" | fzf \
     --reverse \
     --exit-0 \
+    --no-sort \
+    --delimiter=$'\t' \
+    --with-nth=2.. \
     --prompt='session> ' \
-    --preview 'tmux capture-pane -p -t {} -S -200 2>/dev/null | tail -n 200' \
+    --header=$'✓=待处理  ●=agent/TUI 活动  •=普通活动  ·=背景噪音' \
+    --preview 'tmux capture-pane -p -t {1} -S -200 2>/dev/null | tail -n 200' \
     --preview-window='down,70%,wrap,follow'
 )" || true
 
 if [[ -n "${selected:-}" ]]; then
-  tmux switch-client -t "$selected"
+  target="${selected%%$'\t'*}"
+  tmux switch-client -t "$target"
 fi

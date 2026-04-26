@@ -20,20 +20,7 @@ if ! command -v fzf >/dev/null 2>&1; then
   exit 0
 fi
 
-raw_windows="$(tmux list-windows -a -F $'#{session_name}\t#{window_index}\t#{window_id}\t#{window_zoomed_flag}\t#{window_active}\t#{window_name}' 2>/dev/null || true)"
-windows="$(
-  while IFS=$'\t' read -r session_name window_index window_id zoomed_flag active_flag window_name; do
-    [[ -n "${session_name:-}" && -n "${window_index:-}" ]] || continue
-    target="${session_name}:${window_index}"
-    zoom_mark=" "
-    [[ "${zoomed_flag:-0}" == "1" ]] && zoom_mark="⛶"
-    active_mark=" "
-    [[ "${active_flag:-0}" == "1" ]] && active_mark="▶"
-    label="${zoom_mark}${active_mark} ${session_name}:${window_index}  ${window_name}"
-
-    printf '%s\t%s\t%s\t%s\n' "$session_name" "$window_index" "$target" "$label"
-  done <<<"$raw_windows" | sort -t $'\t' -k1,1 -k2,2n | cut -f3-
-)"
+windows="$(python3 "$HOME/.config/tmux/scripts/activity_rank.py" windows 2>/dev/null || true)"
 if [[ -z "${windows:-}" ]]; then
   printf '%s\n' "没有可切换的 window。"
   pause
@@ -44,10 +31,11 @@ selected="$(
   printf '%s\n' "$windows" | fzf \
     --reverse \
     --exit-0 \
+    --no-sort \
     --delimiter=$'\t' \
     --with-nth=2.. \
     --prompt='window> ' \
-    --header=$'⛶=zoom  ▶=该 session 当前 window' \
+    --header=$'✓=待处理  ●=agent/TUI 活动  •=普通活动  ·=背景噪音  ⛶=zoom  ▶=当前 window' \
     --preview 'tmux list-panes -t {1} -F "#{pane_index}#{?pane_active,*, } #{pane_current_command}  #{pane_current_path}" 2>/dev/null; echo "----"; tmux capture-pane -p -t {1} -S -200 2>/dev/null | tail -n 200' \
     --preview-window='down,70%,wrap,follow' \
     --bind 'alt-w:abort'

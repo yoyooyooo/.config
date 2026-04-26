@@ -63,6 +63,7 @@ macOS（Codex 通知/点击回跳）必需：
   - `move_session.sh`：把当前 session 左/右移动（调用 `session_manager.py move`）
   - `move_window_to_session.sh`：把当前 window 移到指定序号的 session（调用 `session_manager.py move-window-to`）
   - `new_session.sh`：新建 session 并触发连续编号（调用 `session_manager.py ensure`）
+  - `activity_rank.py`：`M-a` / `M-w` / `prefix s` 的统一活动排序源；按 `@codex_done`、tmux 活动时间、agent/TUI 识别与 dev server 噪音识别输出 fzf 列表
   - `notify_hud_btt.py`：触发 BetterTouchTool HUD（失败则回退为系统通知）
   - `notify_macos.py`：macOS 通知助手（优先 terminal-notifier；支持 group/remove/点击动作）
   - `pane_starship_title.sh`：pane 顶部标题渲染（优先 starship；否则回退为 cmd+目录）
@@ -87,6 +88,7 @@ macOS（Codex 通知/点击回跳）必需：
     - `_meta_preview.sh`：面板预览：提取脚本头部 `# desc:`/`# usage:`/`# keys:` 信息
     - `clear_iterm2_ghost_lines.sh`：清理 iTerm2 “横线残影”（调用 reset+ClearScrollback+attach）
     - `launcher.sh`：面板入口（汇总 panel dirs → fzf 选择 → exec）
+    - `move_pane_to_session.sh`：fzf 选择 session，并把触发面板时的 pane 移成该 session 最后的独立 window；选择当前 session 时，多分屏 pane 会提升为独立 window；成功后关闭 popup，并让触发 client 继续停在该 pane
     - `pane_auto_layout`：递归等分当前 window 的 panes（保留分屏拓扑）
 	    - `session_switcher.sh`：fzf 选择 session 并切换（带预览）
 	    - `skills_codex_toggle`：skills 开关（在 `~/.codex/skills` 与 `~/.agents/skills` 间移动）
@@ -129,11 +131,12 @@ macOS（Codex 通知/点击回跳）必需：
   - 脚本描述维护在脚本头部注释：`# desc:` / `# usage:`
   - 面板会导出 `ORIGIN_PANE_ID` / `ORIGIN_CLIENT`，供脚本对“触发时的 pane/client”做操作
   - 示例：`spec_preview.sh`（在当前仓库的 `specs/<NNN-*>` 下用 fzf + bat + nvim/less 预览文件；tmux 内为分屏预览）
+  - 示例：`move_pane_to_session.sh`（选择目标 session，把触发面板时的 pane 移成该 session 最后的独立 window；若选择当前 session，则把多分屏 pane 提升为独立 window；成功后关闭 popup，并让触发 client 继续停在该 pane）
   - 示例：`pane_auto_layout`（对触发 pane 所在 window 做“递归等分”，保留分屏拓扑）
   - 示例：`opencode_bg_agents_panel.sh`（实时观测 origin pane 关联的 oMo background subagent 数量与明细）
 - `M-\`（无需 prefix）：skills 管理器（fzf + popup），仅列出含 `SKILL.md` 的目录；Enter=toggle，Ctrl-e/ Ctrl-d 启用/禁用（在 `~/.codex/skills` 与 `~/.agents/skills` 间 mv）
 - `M-k`（无需 prefix）：Codex prompts 双栏浏览器（需启用 `~/.config/tmux/local/codex.conf` 且安装 `tmux-agent`），默认目录 `~/.codex/prompts`
-- `M-a`（无需 prefix）：pane 选择器（fzf + popup，90% × 90%；上方列表（右侧固定窄宽快捷键提示）；下方全宽预览），运行 `bash ~/.config/tmux/scripts/scripts_popup.sh popup_ui`（跨 session；再按一次会关闭）
+- `M-a`（无需 prefix）：pane 选择器（fzf + popup，90% × 90%；上方列表（右侧固定窄宽快捷键提示）；下方全宽预览），运行 `bash ~/.config/tmux/scripts/scripts_popup.sh popup_ui`（跨 session；再按一次会关闭）。列表使用 `activity_rank.py panes`：pane 级别不强行做精确活跃度，只跟随所属 window 的活动排序，并保留 pane 标题/命令/路径用于筛选。
 - `prefix a`：同上（备用）
 - `M-g`（无需 prefix）：弹出 lazygit（popup 90% × 90%，工作目录继承当前激活 pane）
 - `M-/`（无需 prefix）：nvim popup 开关（启动时自动打开左侧文件树；popup 内按 `q` 可退出；再按一次会请求 nvim 退出（有未保存会提示）；若 Option 被设为 Normal，可用 `÷` 触发）
@@ -143,7 +146,7 @@ macOS（Codex 通知/点击回跳）必需：
 -（期望键位：session 的左右切换/换序 = window 同键位 + Shift；若按键没反应，优先排查输入法/系统快捷键是否截走修饰键。）
 - `prefix ,`：重命名当前 session（只输入“标签”，最终会变成 `N-标签`）
 - `prefix J` / `prefix L`：把当前 session 向左/向右移动（会触发整体重新编号）
-- `prefix s`：弹出 session 选择器（fzf + popup），按预览快速切换
+- `prefix s`：弹出 session 选择器（fzf + popup），按预览快速切换；排序复用 `activity_rank.py sessions`，取每个 session 内最靠前的 window 作为该 session 的活动代表
 - `C--` / `C-+`（无需 prefix）：切到上一个 / 下一个 session（`C-=` 也等同于 `C-+`）
 - `Shift+Option+[` / `Shift+Option+]`（`M-{ / M-}`；无需 prefix）：切到上一个 / 下一个 session
 - `Shift+Option+-` / `Shift+Option+=`（`M-_ / M-+`；无需 prefix）：把当前 session 向左/向右移动（会触发整体重新编号）
@@ -193,7 +196,7 @@ macOS（Codex 通知/点击回跳）必需：
 ### 3.3 窗口（window）
 
 - `M-n`（无需 prefix）：新建 window（工作目录继承当前 pane）
-- `M-w`（无需 prefix）：弹出 window 选择器（fzf + popup，跨 session；再按一次会关闭）
+- `M-w`（无需 prefix）：弹出 window 选择器（fzf + popup，跨 session；再按一次会关闭）。排序复用 `activity_rank.py windows`：`@codex_done` 待处理置顶；其余优先按 tmux `window_activity` 倒序；Vite/Next/Webpack/Storybook/tsc watch 等背景噪音整体降到普通活动后面。标记含义：`✓`=待处理，`●`=agent/TUI 活动，`•`=普通活动，`·`=背景噪音，`⛶`=zoom，`▶`=当前 window。agent/TUI 与噪音识别可分别用 `TMUX_ACTIVITY_AGENT_RE` / `TMUX_ACTIVITY_NOISE_RE` 覆盖。
 - `Option+[` / `Option+]`（`M-[ / M-]`；无需 prefix）：上一个 / 下一个 window
 - `Option+-` / `Option+=`（`M-- / M-=`；无需 prefix）：交换当前 window 与前/后 window（`swap-window`）
   - 备用：`Option+u/o`（`M-u / M-o`）同上（更不容易被输入法吞）

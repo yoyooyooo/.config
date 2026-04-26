@@ -40,6 +40,10 @@ An XDG-style tmux configuration split into small layers, designed to be portable
 - `local/`: machine-private files (ignored by default).
 - `run/`: runtime/state (ignored by default).
 
+## Activity Switchers
+
+`M-a`, `M-w`, and `prefix s` use `scripts/activity_rank.py` for one shared fzf order. `@codex_done` items are shown first, normal entries are ordered by tmux activity time, and common dev-server/watch processes are demoted as background noise.
+
 ## Extensions
 
 ### tmux-agent (optional)
