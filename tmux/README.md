@@ -33,6 +33,7 @@ An XDG-style tmux configuration split into small layers, designed to be portable
 
 - `tmux.conf`: public loader (core/platform/features).
 - `~/.tmux.conf`: machine-local entry (enable extensions, run TPM, overrides).
+- Extended key output is configured as CSI-u in `core/base.conf` (`set -s extended-keys-format csi-u`).
 - `core/*.conf`: baseline (keys/hooks/ui/plugins).
 - `platform/macos-iterm2.conf`: macOS+iTerm2 tweaks (auto-loaded on macOS).
 - `features/init.conf`: optional feature bundles (kept small).
@@ -43,6 +44,8 @@ An XDG-style tmux configuration split into small layers, designed to be portable
 ## Activity Switchers
 
 `M-a`, `M-w`, and `prefix s` use `scripts/activity_rank.py` for one shared fzf order. `@codex_done` items are shown first, normal entries are ordered by tmux activity time, and common dev-server/watch processes are demoted as background noise.
+
+Mouse wheel events on pane content still scroll tmux history/copy-mode, but status-line wheel events are intentionally unbound to avoid accidental window switching from trackpad scrolls.
 
 ## Extensions
 

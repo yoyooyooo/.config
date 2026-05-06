@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -uo pipefail
 
 target_window_id="${1:-}"
 if [[ -z "${target_window_id}" ]]; then
   exit 0
 fi
+
+tmux display-message -p -t "${target_window_id}" "#{window_id}" >/dev/null 2>&1 || exit 0
 
 set_window_option_if_needed() {
   local option_name="$1"
@@ -13,7 +15,7 @@ set_window_option_if_needed() {
 
   current_value="$(tmux show-options -w -t "${target_window_id}" -v "${option_name}" 2>/dev/null || true)"
   if [[ "${current_value}" != "${desired_value}" ]]; then
-    tmux set-window-option -t "${target_window_id}" "${option_name}" "${desired_value}"
+    tmux set-window-option -q -t "${target_window_id}" "${option_name}" "${desired_value}" >/dev/null 2>&1 || true
   fi
 }
 

@@ -11,6 +11,7 @@
 跨平台必需：
 
 - `tmux`（当前验证：`tmux 3.5a`；本配置大量使用 `display-popup` / hooks / extkeys）
+  - extended keys 输出格式固定为 CSI-u：`set -s extended-keys-format csi-u`
 - `bash` >= 4（脚本使用 `mapfile` / 关联数组；macOS 需确保 `bash` 指向 Homebrew 版本）
 - `git`（TPM 安装/更新插件）
 - `python3`（`session_manager.py`、Codex 通知/跳转脚本等）
@@ -112,7 +113,7 @@ macOS（Codex 通知/点击回跳）必需：
 
 ### 3.0 常规行为（不用背，但值得知道）
 
-- 已开启鼠标（mouse）：可以用鼠标点选 pane、拖动分隔线；滚轮向上在有 scrollback 时才会进入/滚动 copy-mode（无 scrollback 时不进入，避免“画面置顶 + 要滚到底才退出”的体验），向下滚回底部会自动退出；切回 pane 时若离底部很近也会自动退出（避免持续输出卡住）
+- 已开启鼠标（mouse）：可以用鼠标点选 pane、拖动分隔线；滚轮向上在有 scrollback 时才会进入/滚动 copy-mode（无 scrollback 时不进入，避免“画面置顶 + 要滚到底才退出”的体验），向下滚回底部会自动退出；切回 pane 时若离底部很近也会自动退出（避免持续输出卡住）。状态栏滚轮不再切换 window，避免触摸板滚动误落到状态栏时连续乱跳
 - 如果鼠标行为突然失效（点 pane 不切 / 滚轮不进 copy-mode）：优先检查 iTerm2 的 `View → Allow Mouse Reporting` 是否被关闭（关闭后 tmux 收不到鼠标事件）
 - window/pane 编号从 0 开始（`base-index 0` / `pane-base-index 0`），并启用自动重排（`renumber-windows on`）
 - window 默认会自动按当前命令重命名（`automatic-rename on`），需要固定名字时用 `prefix .` 手动改名
@@ -133,6 +134,7 @@ macOS（Codex 通知/点击回跳）必需：
   - 示例：`spec_preview.sh`（在当前仓库的 `specs/<NNN-*>` 下用 fzf + bat + nvim/less 预览文件；tmux 内为分屏预览）
   - 示例：`move_pane_to_session.sh`（选择目标 session，把触发面板时的 pane 移成该 session 最后的独立 window；若选择当前 session，则把多分屏 pane 提升为独立 window；成功后关闭 popup，并让触发 client 继续停在该 pane）
   - 示例：`pane_auto_layout`（对触发 pane 所在 window 做“递归等分”，保留分屏拓扑）
+  - 示例：`codex_export_last_message_to_obsidian.sh`（读取触发 pane 中 Codex 会话的最后一条 assistant Markdown，写入 Obsidian 临时预览文件，并在 Obsidian 新 tab 置前打开）
   - 示例：`opencode_bg_agents_panel.sh`（实时观测 origin pane 关联的 oMo background subagent 数量与明细）
 - `M-\`（无需 prefix）：skills 管理器（fzf + popup），仅列出含 `SKILL.md` 的目录；Enter=toggle，Ctrl-e/ Ctrl-d 启用/禁用（在 `~/.codex/skills` 与 `~/.agents/skills` 间 mv）
 - `M-k`（无需 prefix）：Codex prompts 双栏浏览器（需启用 `~/.config/tmux/local/codex.conf` 且安装 `tmux-agent`），默认目录 `~/.codex/prompts`
@@ -398,6 +400,7 @@ tmux refresh-client -S
 - Left：`~/.config/tmux/tmux-status/left.sh`
   - 高亮当前 session；窄屏时会自动精简显示
   - 鼠标左键点击某个 session 标签可直接切换（与 window tabs 一致）
+  - 状态栏滚轮已禁用切 window；只保留左键点击 session/window tab 的显式切换
   - 可调：`TMUX_LEFT_NARROW_WIDTH`（低于该宽度走窄屏策略）
 - Right：`~/.config/tmux/tmux-status/right.sh`
   - 若安装 `rainbarf` 则显示系统信息段
