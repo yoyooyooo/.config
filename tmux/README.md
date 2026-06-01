@@ -45,7 +45,11 @@ An XDG-style tmux configuration split into small layers, designed to be portable
 
 `M-a`, `M-w`, and `prefix s` use `scripts/activity_rank.py` for one shared fzf order. `@codex_done` items are shown first, normal entries are ordered by tmux activity time, and common dev-server/watch processes are demoted as background noise.
 
-Mouse wheel events on pane content still scroll tmux history/copy-mode, but status-line wheel events are intentionally unbound to avoid accidental window switching from trackpad scrolls.
+Codex progress badges are written by the `codex-tmux-progress` Codex plugin. Window tabs show yellow `●N` for running Codex sessions in that window and green `●N` for completed-unread Codex sessions. Session tabs use the same yellow/green counts aggregated across the whole session. These options are safe when unset.
+
+Mouse wheel events on pane content still scroll tmux history/copy-mode, but status-line wheel events are intentionally unbound to avoid accidental window switching from trackpad scrolls. Mouse drag selection in copy-mode copies on release and stays in copy-mode instead of jumping back to live output.
+
+Clipboard paste: `M-v`/`M-V` paste the system clipboard after dropping one trailing newline, which avoids accidental submit/control-sequence leakage in TUI apps. `C-S-v` keeps the original clipboard content.
 
 ## Extensions
 

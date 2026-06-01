@@ -21,11 +21,10 @@ if [[ -z "$status_bg" ]]; then
   status_bg=default
 fi
 
-segment_bg="#3b4252"
+segment_bg="${TMUX_STATUS_RIGHT_BG:-${TMUX_SESSION_INACTIVE_BG:-#3d434a}}"
 segment_fg="#eceff4"
 separator=""
-right_cap="█"
-rainbarf_bg="#2e3440"
+rainbarf_bg="$segment_bg"
 rainbarf_segment=""
 rainbarf_toggle="${TMUX_RAINBARF:-1}"
 
@@ -52,8 +51,4 @@ if [[ -z "$rainbarf_segment" ]]; then
   exit 0
 fi
 
-cap_fg="$rainbarf_bg"
-
-printf '%s #[fg=%s,bg=%s]%s' \
-  "$rainbarf_segment" \
-  "$cap_fg" "$status_bg" "$right_cap"
+printf '%s ' "$rainbarf_segment"

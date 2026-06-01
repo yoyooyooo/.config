@@ -8,23 +8,72 @@ else
   mode="classic"
 fi
 
-current_session_id="${1:-}"
-current_session_name="${2:-}"
+client_pid="${1:-}"
+client_tty="${2:-}"
+socket_path="${3:-}"
+term_width="${4:-}"
+status_bg="${5:-}"
+current_window_id="${6:-}"
+current_window_in_progress_count="${7:-}"
+current_window_unread_count="${8:-}"
+current_session_id=""
+current_session_name=""
 
-# Single tmux call to get all needed info
-IFS=$'\t' read -r detect_session_id detect_session_name term_width status_bg < <(
-  tmux display-message -p '#{session_id}	#{session_name}	#{client_width}	#{status-bg}' 2>/dev/null || echo ""
-)
+tmux_args=()
+if [[ -n "$socket_path" ]]; then
+  tmux_args=(-S "$socket_path")
+fi
 
-[[ -z "$current_session_id" ]] && current_session_id="$detect_session_id"
-[[ -z "$current_session_name" ]] && current_session_name="$detect_session_name"
+detect_current_client() {
+  local line pid tty session_id session_name window_id pane_id width
+  while IFS=$'\t' read -r pid tty session_id session_name window_id pane_id width; do
+    [[ -n "${pid:-}" ]] || continue
+    if [[ -n "$client_pid" && "$pid" == "$client_pid" ]]; then
+      printf '%s\t%s\t%s\t%s\n' "$session_id" "$session_name" "$window_id" "$width"
+      return 0
+    fi
+    if [[ -n "$client_tty" && "$tty" == "$client_tty" ]]; then
+      line="${session_id}"$'\t'"${session_name}"$'\t'"${window_id}"$'\t'"${width}"
+    fi
+  done < <(tmux "${tmux_args[@]}" list-clients -F '#{client_pid}	#{client_tty}	#{session_id}	#{session_name}	#{window_id}	#{pane_id}	#{client_width}' 2>/dev/null || true)
+  [[ -n "${line:-}" ]] || return 1
+  printf '%s\n' "$line"
+}
+
+if IFS=$'\t' read -r detect_session_id detect_session_name detect_window_id detect_width < <(detect_current_client); then
+  current_session_id="$detect_session_id"
+  current_session_name="$detect_session_name"
+  [[ -n "$detect_window_id" ]] && current_window_id="$detect_window_id"
+  [[ -n "$detect_width" ]] && term_width="$detect_width"
+fi
+
+if [[ -z "$current_session_id" ]]; then
+  IFS=$'\t' read -r current_session_id current_session_name fallback_width fallback_status_bg current_window_id current_window_in_progress_count current_window_unread_count < <(
+    tmux "${tmux_args[@]}" display-message -p '#{session_id}	#{session_name}	#{client_width}	#{status-bg}	#{window_id}	#{@codex_in_progress_count}	#{@codex_unread_count}' 2>/dev/null || echo ""
+  )
+  [[ -z "$term_width" ]] && term_width="$fallback_width"
+  [[ -z "$status_bg" ]] && status_bg="$fallback_status_bg"
+fi
+
 [[ -z "$status_bg" ]] && status_bg=default
 term_width="${term_width:-100}"
+if [[ -n "$current_window_id" ]]; then
+  current_window_in_progress_count="$(tmux "${tmux_args[@]}" display-message -p -t "$current_window_id" '#{@codex_in_progress_count}' 2>/dev/null || true)"
+  current_window_unread_count="$(tmux "${tmux_args[@]}" display-message -p -t "$current_window_id" '#{@codex_unread_count}' 2>/dev/null || true)"
+fi
+if ! [[ "${current_window_in_progress_count:-}" =~ ^[0-9]+$ ]]; then
+  current_window_in_progress_count="$(tmux "${tmux_args[@]}" display-message -p -t "$current_window_id" '#{@codex_in_progress_count}' 2>/dev/null || true)"
+fi
+[[ "${current_window_in_progress_count:-}" =~ ^[0-9]+$ ]] || current_window_in_progress_count=0
+if ! [[ "${current_window_unread_count:-}" =~ ^[0-9]+$ ]]; then
+  current_window_unread_count="$(tmux "${tmux_args[@]}" display-message -p -t "$current_window_id" '#{@codex_unread_count}' 2>/dev/null || true)"
+fi
+[[ "${current_window_unread_count:-}" =~ ^[0-9]+$ ]] || current_window_unread_count=0
 
-inactive_bg="#373b41"
+inactive_bg="${TMUX_SESSION_INACTIVE_BG:-#3d434a}"
 inactive_fg="#c5c8c6"
-active_bg="${TMUX_THEME_COLOR:-#b294bb}"
-active_fg="#1d1f21"
+active_bg="${TMUX_SESSION_ACTIVE_BG:-#24292f}"
+active_fg="${TMUX_SESSION_ACTIVE_FG:-#f0f6fc}"
 separator=""
 rounded_separator=""
 left_cap=""
@@ -74,7 +123,8 @@ extract_index() {
   fi
 }
 
-sessions=$(tmux list-sessions -F $'#{session_id}\t#{session_name}' 2>/dev/null || true)
+field_sep='|'
+sessions=$(tmux "${tmux_args[@]}" list-sessions -F "#{session_id}${field_sep}#{session_name}${field_sep}#{@codex_session_in_progress_count}${field_sep}#{@codex_session_unread_count}" 2>/dev/null || true)
 if [[ -z "$sessions" ]]; then
   exit 0
 fi
@@ -82,7 +132,7 @@ fi
 rendered=""
 prev_bg=""
 current_session_id_norm=$(normalize_session_id "$current_session_id")
-while IFS=$'\t' read -r session_id name; do
+while IFS="$field_sep" read -r session_id name codex_in_progress_count codex_unread_count; do
   [[ -z "${session_id:-}" ]] && continue
   [[ -z "${name:-}" ]] && continue
 
@@ -113,6 +163,24 @@ while IFS=$'\t' read -r session_id name; do
   fi
 
   prefix_render=""
+  visible_in_progress_count=0
+  if [[ "${codex_in_progress_count:-}" =~ ^[0-9]+$ ]]; then
+    visible_in_progress_count="$codex_in_progress_count"
+  fi
+  if (( visible_in_progress_count > 0 )); then
+    prefix_render+="#[fg=#EAB308,bg=${segment_bg}]●${visible_in_progress_count}#[fg=${segment_fg},bg=${segment_bg}] "
+  fi
+  visible_unread_count=0
+  if [[ "${codex_unread_count:-}" =~ ^[0-9]+$ ]]; then
+    visible_unread_count="$codex_unread_count"
+    if (( is_current == 1 && current_window_unread_count > 0 )); then
+      visible_unread_count=$(( visible_unread_count - current_window_unread_count ))
+      (( visible_unread_count < 0 )) && visible_unread_count=0
+    fi
+  fi
+  if (( visible_unread_count > 0 )); then
+    prefix_render+="#[fg=#3fb950,bg=${segment_bg}]●${visible_unread_count}#[fg=${segment_fg},bg=${segment_bg}] "
+  fi
   label_max_width=$max_width
   if (( ${#label} > label_max_width )); then
     label="${label:0:label_max_width-1}…"

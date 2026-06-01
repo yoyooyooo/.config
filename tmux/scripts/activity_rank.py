@@ -36,7 +36,7 @@ class WindowRow:
     window_name: str
     activity: int
     activity_flag: bool
-    codex_done: bool
+    codex_unread: bool
     active: bool
     zoomed: bool = False
 
@@ -73,7 +73,7 @@ class PaneDetail:
     path: str
     window_activity: int
     window_activity_flag: bool
-    codex_done: bool
+    codex_unread: bool
     window_active: bool
     window_zoomed: bool
     pane_pid: int = 0
@@ -184,7 +184,7 @@ def _pane_kind(pane: PaneRow | PaneDetail, process_text: dict[object, str]) -> s
 
 
 def _window_kind(window: WindowRow, panes: list[PaneRow], process_text: dict[object, str]) -> str:
-    if window.codex_done:
+    if window.codex_unread:
         return "done"
     kinds = [_pane_kind(pane, process_text) for pane in panes]
     if kinds and all(kind == "noise" for kind in kinds):
@@ -270,7 +270,7 @@ def rank_panes(
             pane.window_name,
             pane.window_activity,
             pane.window_activity_flag,
-            pane.codex_done,
+            pane.codex_unread,
             pane.window_active,
             pane.window_zoomed,
         )
@@ -324,7 +324,7 @@ def _split_rows(raw: str) -> Iterable[list[str]]:
 
 
 def collect_windows() -> list[WindowRow]:
-    fmt = "#{session_id}\t#{session_name}\t#{window_id}\t#{window_index}\t#{window_name}\t#{window_activity}\t#{window_activity_flag}\t#{@codex_done}\t#{window_active}\t#{window_zoomed_flag}"
+    fmt = "#{session_id}\t#{session_name}\t#{window_id}\t#{window_index}\t#{window_name}\t#{window_activity}\t#{window_activity_flag}\t#{@codex_unread_count}\t#{window_active}\t#{window_zoomed_flag}"
     rows: list[WindowRow] = []
     for parts in _split_rows(_tmux_out(["list-windows", "-a", "-F", fmt])):
         parts += [""] * (10 - len(parts))
@@ -351,7 +351,7 @@ def collect_pane_rows() -> list[PaneRow]:
 
 
 def collect_pane_details() -> list[PaneDetail]:
-    fmt = "#{session_id}\t#{session_name}\t#{window_id}\t#{window_index}\t#{window_name}\t#{pane_id}\t#{pane_index}\t#{pane_current_command}\t#{pane_title}\t#{pane_current_path}\t#{window_activity}\t#{window_activity_flag}\t#{@codex_done}\t#{window_active}\t#{window_zoomed_flag}\t#{pane_pid}\t#{pane_active}"
+    fmt = "#{session_id}\t#{session_name}\t#{window_id}\t#{window_index}\t#{window_name}\t#{pane_id}\t#{pane_index}\t#{pane_current_command}\t#{pane_title}\t#{pane_current_path}\t#{window_activity}\t#{window_activity_flag}\t#{@codex_unread_count}\t#{window_active}\t#{window_zoomed_flag}\t#{pane_pid}\t#{pane_active}"
     rows: list[PaneDetail] = []
     exclude_window = _tmux_out(["show", "-gqv", "@fzf_exclude_window_id"]).strip()
     origin = os.environ.get("ORIGIN_PANE_ID", "").strip()

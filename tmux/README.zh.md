@@ -43,6 +43,7 @@ macOS（Codex 通知/点击回跳）必需：
   - 本配置把 tmux `escape-time` 设为 `80`（ms），用于让 `Esc+字母` 更稳定地被识别为 `M-字母`（也更抗 “模拟按键” 的字节间隔抖动）
   - 如果按键“偶发性失灵”，但 keyprobe 录制看到的字节是对的，优先检查 `tmux list-clients` 是否出现同一个 `tty` 绑定了多个 `tmux attach`（常见有一个 `ps` 状态是 `T`）；这会让脚本按 `client_name` 定位时落到“另一个 client”，表现为当前窗口没反应。
 - `S-x`：Shift + x（大写字母）
+- `M-v` / `M-V`：安全粘贴系统剪贴板，会去掉末尾单个换行，避免 Codex 等 TUI 把尾部换行/控制序列当成正文；`C-S-v` 保留原始剪贴板内容。
 
 ---
 
@@ -113,7 +114,7 @@ macOS（Codex 通知/点击回跳）必需：
 
 ### 3.0 常规行为（不用背，但值得知道）
 
-- 已开启鼠标（mouse）：可以用鼠标点选 pane、拖动分隔线；滚轮向上在有 scrollback 时才会进入/滚动 copy-mode（无 scrollback 时不进入，避免“画面置顶 + 要滚到底才退出”的体验），向下滚回底部会自动退出；切回 pane 时若离底部很近也会自动退出（避免持续输出卡住）。状态栏滚轮不再切换 window，避免触摸板滚动误落到状态栏时连续乱跳
+- 已开启鼠标（mouse）：可以用鼠标点选 pane、拖动分隔线；滚轮向上在有 scrollback 时才会进入/滚动 copy-mode（无 scrollback 时不进入，避免“画面置顶 + 要滚到底才退出”的体验），向下滚回底部会自动退出；鼠标拖选松手会复制但停留在 copy-mode，不跳回实时输出底部；切回 pane 时若离底部很近也会自动退出（避免持续输出卡住）。状态栏滚轮不再切换 window，避免触摸板滚动误落到状态栏时连续乱跳
 - 如果鼠标行为突然失效（点 pane 不切 / 滚轮不进 copy-mode）：优先检查 iTerm2 的 `View → Allow Mouse Reporting` 是否被关闭（关闭后 tmux 收不到鼠标事件）
 - window/pane 编号从 0 开始（`base-index 0` / `pane-base-index 0`），并启用自动重排（`renumber-windows on`）
 - window 默认会自动按当前命令重命名（`automatic-rename on`），需要固定名字时用 `prefix .` 手动改名
@@ -134,7 +135,7 @@ macOS（Codex 通知/点击回跳）必需：
   - 示例：`spec_preview.sh`（在当前仓库的 `specs/<NNN-*>` 下用 fzf + bat + nvim/less 预览文件；tmux 内为分屏预览）
   - 示例：`move_pane_to_session.sh`（选择目标 session，把触发面板时的 pane 移成该 session 最后的独立 window；若选择当前 session，则把多分屏 pane 提升为独立 window；成功后关闭 popup，并让触发 client 继续停在该 pane）
   - 示例：`pane_auto_layout`（对触发 pane 所在 window 做“递归等分”，保留分屏拓扑）
-  - 示例：`codex_export_last_message_to_obsidian.sh`（读取触发 pane 中 Codex 会话的最后一条 assistant Markdown，写入 Obsidian 临时预览文件，并在 Obsidian 新 tab 置前打开）
+  - 示例：`agent_export_last_message_to_obsidian.sh`（读取触发 pane 中 Codex / Pi / OMP / Claude Code 会话的最后一条 assistant Markdown，写入 Obsidian 临时预览文件并打开；Codex 读 rollout JSONL，Pi/OMP 读 `~/.pi|~/.omp/agent/sessions`，Claude Code 读 `~/.claude/projects/<cwd>/<sessionId>.jsonl`，必要时退回 tmux 截屏解析；若命中真正的 `obsidian` CLI 会用 `newtab`，若只命中 macOS app binary 则用 `obsidian://open` 避免 panel 阻塞）
   - 示例：`opencode_bg_agents_panel.sh`（实时观测 origin pane 关联的 oMo background subagent 数量与明细）
 - `M-\`（无需 prefix）：skills 管理器（fzf + popup），仅列出含 `SKILL.md` 的目录；Enter=toggle，Ctrl-e/ Ctrl-d 启用/禁用（在 `~/.codex/skills` 与 `~/.agents/skills` 间 mv）
 - `M-k`（无需 prefix）：Codex prompts 双栏浏览器（需启用 `~/.config/tmux/local/codex.conf` 且安装 `tmux-agent`），默认目录 `~/.codex/prompts`
@@ -199,6 +200,7 @@ macOS（Codex 通知/点击回跳）必需：
 
 - `M-n`（无需 prefix）：新建 window（工作目录继承当前 pane）
 - `M-w`（无需 prefix）：弹出 window 选择器（fzf + popup，跨 session；再按一次会关闭）。排序复用 `activity_rank.py windows`：`@codex_done` 待处理置顶；其余优先按 tmux `window_activity` 倒序；Vite/Next/Webpack/Storybook/tsc watch 等背景噪音整体降到普通活动后面。标记含义：`✓`=待处理，`●`=agent/TUI 活动，`•`=普通活动，`·`=背景噪音，`⛶`=zoom，`▶`=当前 window。agent/TUI 与噪音识别可分别用 `TMUX_ACTIVITY_AGENT_RE` / `TMUX_ACTIVITY_NOISE_RE` 覆盖。
+- Codex 状态标记：由 `codex-tmux-progress` Codex 插件写入。window 标题左侧显示黄色 `●N` 表示该 window 下正在运行的 Codex 数，绿色 `●N` 表示该 window 下已完成但未读的 Codex 数；当前 window 只抑制自身 unread 绿点，running 黄点照常显示，便于和全局 running 计数保持一致。session 标签左侧显示同样的黄/绿计数；当前 session 只扣掉当前 window 的 unread 数，running 数照常显示。相关 option 未设置时不显示。
 - `Option+[` / `Option+]`（`M-[ / M-]`；无需 prefix）：上一个 / 下一个 window
 - `Option+-` / `Option+=`（`M-- / M-=`；无需 prefix）：交换当前 window 与前/后 window（`swap-window`）
   - 备用：`Option+u/o`（`M-u / M-o`）同上（更不容易被输入法吞）
@@ -224,6 +226,9 @@ macOS（Codex 通知/点击回跳）必需：
 - 关闭 pane 后也会自动等分（等价于 `select-layout -E`）；支持“先上下再左右”这种混合分屏（zoom 时不触发）
 - 切换 pane（无需 prefix）：`M-i`/`M-Down`/`M-j`/`M-l`（上/下/左/右）
 - 回到上一次激活位置（跨 window/session；无需 prefix）：`C-Tab`（可在两个位置间来回切换；window 内等价 `prefix ;`）
+- 跳到 Codex 关注项（无需 prefix）：`M-Tab`（优先最新已完成未读 pane，其次最新运行中 pane，再其次最近 active pane）
+  - cmux/Ghostty：`Option+Tab` 不能被 cmux 自己的 `shortcut.jumpToUnread` 占用；Ghostty 配置需要 `keybind = alt+tab=text:\x1b[116~`，tmux 侧用 `User13` 接收。
+- Codex Sessions 面板：按 `M-c` 打开 popup，按 `running / unread / recent` 分组，回车跳转 pane。
 - 缩放当前 pane（无需 prefix）：`M-f`（zoom；缩放时窗口名会出现 `⛶`，pane 顶部边框会红底显示 `⛶ ZOOM`）
 - 缩放当前 pane（无需 prefix）：`Shift+Cmd+Enter`（同上；需在 iTerm2 把该按键映射为发送 `\e[99~`）
 - 关闭当前 pane（无需 prefix）：`M-x`（连按两次确认；iTerm2 兼容键：`≈`）
@@ -244,10 +249,11 @@ macOS（Codex 通知/点击回跳）必需：
 ### 3.5 系统剪贴板
 
 - 粘贴系统剪贴板（无需 prefix）：
-  - `C-S-v`：调用 `~/.config/tmux/scripts/paste_from_clipboard.sh`
-  - `M-V`：同上（更通用，推荐优先用这个）
-- 进入 copy-mode（无需 prefix）：`M-v`
+  - `M-v` / `M-V`：调用 `~/.config/tmux/scripts/paste_from_clipboard.sh --trim-final-newline`，去掉末尾单个换行
+  - `C-S-v`：调用 `~/.config/tmux/scripts/paste_from_clipboard.sh`，保留原始剪贴板内容
+- 进入 copy-mode（需要 prefix）：`prefix v`
 - copy-mode 里用鼠标滚轮向下滚回到底部会自动退出 copy-mode（回到实时输出）
+- copy-mode 里鼠标拖选松手会自动复制，但不会退出 copy-mode 或跳回底部
 - 如果 pane 停在 copy-mode 且离底部不远，切换到该 pane 会自动退出（阈值：`tmux set -g @copy_mode_auto_cancel_threshold 20`）
 - copy-mode（vi）里搜索：`/` 向下、`?` 向上；跳转匹配：`n` 下一处、`p` 上一处（也可用 `=`/`-`）
 - copy-mode（vi）里复制到系统剪贴板：按 `y`（调用 `~/.config/tmux/scripts/copy_to_clipboard.sh`）
@@ -315,7 +321,7 @@ macOS（Codex 通知/点击回跳）必需：
 
 ## 6) Copy-mode（vi）细节
 
-进入：`M-v`（无需 prefix）。
+进入：`prefix v`。
 
 常用键位（仅在 copy-mode-vi 表里生效）：
 
@@ -324,7 +330,7 @@ macOS（Codex 通知/点击回跳）必需：
 - 复制并退出：`y`（复制到 tmux buffer + 系统剪贴板）
 - 滚动：`C-u` 向上 5 行；`C-e` 向下 5 行
 
-> 小提示：很多终端对 `C-S-v` 支持不稳定，因此“粘贴系统剪贴板”更推荐用 `M-V`。
+> 小提示：很多终端对 `C-S-v` 支持不稳定，因此“粘贴系统剪贴板”更推荐用 `M-v` / `M-V`。
 
 ---
 
@@ -394,8 +400,8 @@ tmux refresh-client -S
 
 ### 9.3 状态栏 left / right
 
-- 状态栏第 1 行：session tabs 不再显示计数提示
-- window tabs（底部）：只保留 Codex 完成标记 `✓` 与 zoom 标记 `⛶`；索引与标题之间用 pane 数标记替代冒号（1-8：`·⠆⠖⠶⡶⡷⣷⣿`，超过 8 仍显示 `⣿`）
+- 状态栏第 1 行：右侧显示全局 Codex running/unread 计数；Codex Sessions 面板由 `M-c` 打开。
+- window tabs（底部）：Codex 状态由 `codex-tmux-progress` 插件写入，黄色 `●N` 表示运行中，绿色 `●N` 表示已完成但未读；当前 window 只抑制自身 unread 绿点，running 黄点照常显示。session tabs 左侧显示同样的黄/绿聚合计数；当前 session 只扣掉当前 window 的 unread 数，running 数照常显示。window 索引与标题之间用 pane 数标记替代冒号（1-8：`·⠆⠖⠶⡶⡷⣷⣿`，超过 8 仍显示 `⣿`）
 
 - Left：`~/.config/tmux/tmux-status/left.sh`
   - 高亮当前 session；窄屏时会自动精简显示
