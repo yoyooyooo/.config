@@ -59,7 +59,7 @@ macOS（Codex 通知/点击回跳）必需：
   - `copy_to_clipboard.sh`：stdin → tmux buffer + 系统剪贴板（pbcopy/wl-copy/xclip…）
   - `iterm2_reset_and_clear_scrollback_then_attach.sh`：reset 终端 + 清 iTerm2 scrollback 后重新 attach（修复“横线残影”）
   - `keyprobe_keys.py`：按键探针（test/record 输出 JSON；排查 Option/Meta 等按键序列）
-  - `agent_runtime_sessions.sh`：Agent Runtime Session 的本地 registry/stash helper（薄 shell wrapper，核心在 `agent-extensions/packages/tmux-runtime-session-pi/src/cli.ts`）；读取 `~/.tmux-agent/runtime-sessions/`，支持 list / stash-live / preview / resume-command / pane-command
+  - `local/scripts/agent_runtime_sessions.sh`：Agent Runtime Session 的本地 registry/stash helper（由 `agent-extensions/packages/tmux-runtime-session-pi` 安装；薄 shell wrapper，核心在 `src/cli.ts`）；读取 `~/.tmux-agent/runtime-sessions/`，支持 list / stash-live / preview / resume-command / pane-command
   - `kill_pane_double_tap.sh`：双击确认关闭 pane（配合 `M-x`）
   - `last_active_pane.sh`：记录/跳转上一次激活位置（跨 window/session；配合 `C-Tab`）
   - `layout_builder.sh`：两窗格布局重排（split/join/break 保持拓扑与 cwd）
@@ -89,9 +89,9 @@ macOS（Codex 通知/点击回跳）必需：
   - `window_rename_from_path.sh`：按路径自动重命名 window（未手动改名时生效）
   - `panel/`：`M-p` 脚本面板（目录下可执行文件会自动出现在面板里）
     - `_meta_preview.sh`：面板预览：提取脚本头部 `# desc:`/`# usage:`/`# keys:` 信息
-    - `agent_runtime_sessions.sh`：列出已保存/最近的 Agent Runtime Sessions；Enter 会把选中 session 的 resume 命令发送到触发 pane，Ctrl-s 会先保存所有 live session
-    - `agent_runtime_stash_live.sh`：关机/重启前一键保存当前 live Agent Runtime Sessions；只落盘，不自动 resume
-    - `agent_fork_active.sh`：通用版 fork 当前 pane 的 Agent Runtime Session；当前支持 Pi，等价于对当前 pane 的真实 session 执行 `pi --fork <sessionFile|id>`，替代 Codex 专用 `codex_fork_active.sh` 路线
+    - `local/scripts/panel/agent_runtime_sessions.sh`：列出已保存/最近的 Agent Runtime Sessions；Enter 会把选中 session 的 resume 命令发送到触发 pane，Ctrl-s 会先保存所有 live session
+    - `local/scripts/panel/agent_runtime_stash_live.sh`：关机/重启前一键保存当前 live Agent Runtime Sessions；只落盘，不自动 resume
+    - `local/scripts/panel/agent_fork_active.sh`：通用版 fork 当前 pane 的 Agent Runtime Session；当前支持 Pi，等价于对当前 pane 的真实 session 执行 `pi --fork <sessionFile|id>`，替代 Codex 专用 `codex_fork_active.sh` 路线
     - `clear_iterm2_ghost_lines.sh`：清理 iTerm2 “横线残影”（调用 reset+ClearScrollback+attach）
     - `launcher.sh`：面板入口（汇总 panel dirs → fzf 选择 → exec）
     - `move_pane_to_session.sh`：fzf 选择 session，并把触发面板时的 pane 移成该 session 最后的独立 window；选择当前 session 时，多分屏 pane 会提升为独立 window；成功后关闭 popup，并让触发 client 继续停在该 pane
