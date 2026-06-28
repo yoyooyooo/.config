@@ -59,13 +59,14 @@ macOS（Codex 通知/点击回跳）必需：
   - `copy_to_clipboard.sh`：stdin → tmux buffer + 系统剪贴板（pbcopy/wl-copy/xclip…）
   - `iterm2_reset_and_clear_scrollback_then_attach.sh`：reset 终端 + 清 iTerm2 scrollback 后重新 attach（修复“横线残影”）
   - `keyprobe_keys.py`：按键探针（test/record 输出 JSON；排查 Option/Meta 等按键序列）
+  - `agent_runtime_sessions.sh`：Agent Runtime Session 的本地 registry/stash helper（薄 shell wrapper，核心在 `agent-extensions/packages/tmux-runtime-session-pi/src/cli.ts`）；读取 `~/.tmux-agent/runtime-sessions/`，支持 list / stash-live / preview / resume-command / pane-command
   - `kill_pane_double_tap.sh`：双击确认关闭 pane（配合 `M-x`）
   - `last_active_pane.sh`：记录/跳转上一次激活位置（跨 window/session；配合 `C-Tab`）
   - `layout_builder.sh`：两窗格布局重排（split/join/break 保持拓扑与 cwd）
   - `move_session.sh`：把当前 session 左/右移动（调用 `session_manager.py move`）
   - `move_window_to_session.sh`：把当前 window 移到指定序号的 session（调用 `session_manager.py move-window-to`）
   - `new_session.sh`：新建 session 并触发连续编号（调用 `session_manager.py ensure`）
-  - `activity_rank.py`：`M-a` / `M-w` / `prefix s` 的统一活动排序源；按 `@codex_done`、tmux 活动时间、agent/TUI 识别与 dev server 噪音识别输出 fzf 列表
+  - `activity_rank.py`：`M-a` / `M-w` / `prefix s` 的统一活动排序源；按 `@agent_unread`、tmux 活动时间、agent/TUI 识别与 dev server 噪音识别输出 fzf 列表
   - `notify_hud_btt.py`：触发 BetterTouchTool HUD（失败则回退为系统通知）
   - `notify_macos.py`：macOS 通知助手（优先 terminal-notifier；支持 group/remove/点击动作）
   - `pane_starship_title.sh`：pane 顶部标题渲染（优先 starship；否则回退为 cmd+目录）
@@ -88,6 +89,9 @@ macOS（Codex 通知/点击回跳）必需：
   - `window_rename_from_path.sh`：按路径自动重命名 window（未手动改名时生效）
   - `panel/`：`M-p` 脚本面板（目录下可执行文件会自动出现在面板里）
     - `_meta_preview.sh`：面板预览：提取脚本头部 `# desc:`/`# usage:`/`# keys:` 信息
+    - `agent_runtime_sessions.sh`：列出已保存/最近的 Agent Runtime Sessions；Enter 会把选中 session 的 resume 命令发送到触发 pane，Ctrl-s 会先保存所有 live session
+    - `agent_runtime_stash_live.sh`：关机/重启前一键保存当前 live Agent Runtime Sessions；只落盘，不自动 resume
+    - `agent_fork_active.sh`：通用版 fork 当前 pane 的 Agent Runtime Session；当前支持 Pi，等价于对当前 pane 的真实 session 执行 `pi --fork <sessionFile|id>`，替代 Codex 专用 `codex_fork_active.sh` 路线
     - `clear_iterm2_ghost_lines.sh`：清理 iTerm2 “横线残影”（调用 reset+ClearScrollback+attach）
     - `launcher.sh`：面板入口（汇总 panel dirs → fzf 选择 → exec）
     - `move_pane_to_session.sh`：fzf 选择 session，并把触发面板时的 pane 移成该 session 最后的独立 window；选择当前 session 时，多分屏 pane 会提升为独立 window；成功后关闭 popup，并让触发 client 继续停在该 pane
@@ -137,6 +141,7 @@ macOS（Codex 通知/点击回跳）必需：
   - 示例：`pane_auto_layout`（对触发 pane 所在 window 做“递归等分”，保留分屏拓扑）
   - 示例：`agent_export_last_message_to_obsidian.sh`（读取触发 pane 中 Codex / Pi / OMP / Claude Code 会话的最后一条 assistant Markdown，写入 Obsidian 临时预览文件并打开；Codex 读 rollout JSONL，Pi/OMP 读 `~/.pi|~/.omp/agent/sessions`，Claude Code 读 `~/.claude/projects/<cwd>/<sessionId>.jsonl`，必要时退回 tmux 截屏解析；若命中真正的 `obsidian` CLI 会用 `newtab`，若只命中 macOS app binary 则用 `obsidian://open` 避免 panel 阻塞）
   - 示例：`opencode_bg_agents_panel.sh`（实时观测 origin pane 关联的 oMo background subagent 数量与明细）
+  - Agent Runtime stash/pop：Pi 通过 `agent-extensions/packages/tmux-runtime-session-pi` 扩展把真实 `sessionId/sessionFile/cwd/TMUX_PANE` 写入 `~/.tmux-agent/runtime-sessions/`；`agent_runtime_stash_live.sh` 会扫描本机所有可达 tmux server（`$TMUX_TMPDIR`/`/tmp`/`/private/tmp` 下的当前用户 sockets）并保存 live 列表，`agent_runtime_sessions.sh` 负责之后按需选一个 session 在当前 pane 执行 `pi --session <file>`。匹配主键是 Agent runtime session id，不依赖恢复后的 pane id 一致。
 - `M-\`（无需 prefix）：skills 管理器（fzf + popup），仅列出含 `SKILL.md` 的目录；Enter=toggle，Ctrl-e/ Ctrl-d 启用/禁用（在 `~/.codex/skills` 与 `~/.agents/skills` 间 mv）
 - `M-k`（无需 prefix）：Codex prompts 双栏浏览器（需启用 `~/.config/tmux/local/codex.conf` 且安装 `tmux-agent`），默认目录 `~/.codex/prompts`
 - `M-a`（无需 prefix）：pane 选择器（fzf + popup，90% × 90%；上方列表（右侧固定窄宽快捷键提示）；下方全宽预览），运行 `bash ~/.config/tmux/scripts/scripts_popup.sh popup_ui`（跨 session；再按一次会关闭）。列表使用 `activity_rank.py panes`：pane 级别不强行做精确活跃度，只跟随所属 window 的活动排序，并保留 pane 标题/命令/路径用于筛选。
@@ -199,8 +204,8 @@ macOS（Codex 通知/点击回跳）必需：
 ### 3.3 窗口（window）
 
 - `M-n`（无需 prefix）：新建 window（工作目录继承当前 pane）
-- `M-w`（无需 prefix）：弹出 window 选择器（fzf + popup，跨 session；再按一次会关闭）。排序复用 `activity_rank.py windows`：`@codex_done` 待处理置顶；其余优先按 tmux `window_activity` 倒序；Vite/Next/Webpack/Storybook/tsc watch 等背景噪音整体降到普通活动后面。标记含义：`✓`=待处理，`●`=agent/TUI 活动，`•`=普通活动，`·`=背景噪音，`⛶`=zoom，`▶`=当前 window。agent/TUI 与噪音识别可分别用 `TMUX_ACTIVITY_AGENT_RE` / `TMUX_ACTIVITY_NOISE_RE` 覆盖。
-- Codex 状态标记：由 `codex-tmux-progress` Codex 插件写入。window 标题左侧显示黄色 `●N` 表示该 window 下正在运行的 Codex 数，绿色 `●N` 表示该 window 下已完成但未读的 Codex 数；当前 window 只抑制自身 unread 绿点，running 黄点照常显示，便于和全局 running 计数保持一致。session 标签左侧显示同样的黄/绿计数；当前 session 只扣掉当前 window 的 unread 数，running 数照常显示。相关 option 未设置时不显示。
+- `M-w`（无需 prefix）：弹出 window 选择器（fzf + popup，跨 session；再按一次会关闭）。排序复用 `activity_rank.py windows`：`@agent_unread` 待处理置顶；其余优先按 tmux `window_activity` 倒序；Vite/Next/Webpack/Storybook/tsc watch 等背景噪音整体降到普通活动后面。标记含义：`✓`=待处理，`●`=agent/TUI 活动，`•`=普通活动，`·`=背景噪音，`⛶`=zoom，`▶`=当前 window。agent/TUI 与噪音识别可分别用 `TMUX_ACTIVITY_AGENT_RE` / `TMUX_ACTIVITY_NOISE_RE` 覆盖。
+- Agent 状态标记：由 tmux progress 扩展写入。window 标题左侧显示黄色 `●N` 表示该 window 下正在运行的本地 agent 数，绿色 `●N` 表示该 window 下已完成但未读的本地 agent 数；当前 window 只抑制自身 unread 绿点，running 黄点照常显示，便于和全局 running 计数保持一致。session 标签左侧显示同样的黄/绿计数；当前 session 只扣掉当前 window 的 unread 数，running 数照常显示。相关 option 未设置时不显示。
 - `Option+[` / `Option+]`（`M-[ / M-]`；无需 prefix）：上一个 / 下一个 window
 - `Option+-` / `Option+=`（`M-- / M-=`；无需 prefix）：交换当前 window 与前/后 window（`swap-window`）
   - 备用：`Option+u/o`（`M-u / M-o`）同上（更不容易被输入法吞）
@@ -228,7 +233,7 @@ macOS（Codex 通知/点击回跳）必需：
 - 回到上一次激活位置（跨 window/session；无需 prefix）：`C-Tab`（可在两个位置间来回切换；window 内等价 `prefix ;`）
 - 跳到 Codex 关注项（无需 prefix）：`M-Tab`（优先最新已完成未读 pane，其次最新运行中 pane，再其次最近 active pane）
   - cmux/Ghostty：`Option+Tab` 不能被 cmux 自己的 `shortcut.jumpToUnread` 占用；Ghostty 配置需要 `keybind = alt+tab=text:\x1b[116~`，tmux 侧用 `User13` 接收。
-- Codex Sessions 面板：按 `M-c` 打开 popup，按 `running / unread / recent` 分组，回车跳转 pane。
+- Agent Sessions 面板：按 `M-c` 打开 popup，按 `running / unread / recent` 分组，回车跳转 pane。
 - 缩放当前 pane（无需 prefix）：`M-f`（zoom；缩放时窗口名会出现 `⛶`，pane 顶部边框会红底显示 `⛶ ZOOM`）
 - 缩放当前 pane（无需 prefix）：`Shift+Cmd+Enter`（同上；需在 iTerm2 把该按键映射为发送 `\e[99~`）
 - 关闭当前 pane（无需 prefix）：`M-x`（连按两次确认；iTerm2 兼容键：`≈`）
@@ -400,8 +405,8 @@ tmux refresh-client -S
 
 ### 9.3 状态栏 left / right
 
-- 状态栏第 1 行：右侧显示全局 Codex running/unread 计数；Codex Sessions 面板由 `M-c` 打开。
-- window tabs（底部）：Codex 状态由 `codex-tmux-progress` 插件写入，黄色 `●N` 表示运行中，绿色 `●N` 表示已完成但未读；当前 window 只抑制自身 unread 绿点，running 黄点照常显示。session tabs 左侧显示同样的黄/绿聚合计数；当前 session 只扣掉当前 window 的 unread 数，running 数照常显示。window 索引与标题之间用 pane 数标记替代冒号（1-8：`·⠆⠖⠶⡶⡷⣷⣿`，超过 8 仍显示 `⣿`）
+- 状态栏第 1 行：右侧显示全局 Agent running/unread 计数；Agent Sessions 面板由 `M-c` 打开。
+- window tabs（底部）：Agent 状态由 tmux progress 扩展写入，黄色 `●N` 表示运行中，绿色 `●N` 表示已完成但未读；当前 window 只抑制自身 unread 绿点，running 黄点照常显示。session tabs 左侧显示同样的黄/绿聚合计数；当前 session 只扣掉当前 window 的 unread 数，running 数照常显示。window 索引与标题之间用 pane 数标记替代冒号（1-8：`·⠆⠖⠶⡶⡷⣷⣿`，超过 8 仍显示 `⣿`）
 
 - Left：`~/.config/tmux/tmux-status/left.sh`
   - 高亮当前 session；窄屏时会自动精简显示
