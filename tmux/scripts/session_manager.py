@@ -3,7 +3,7 @@
 import re
 import subprocess
 import sys
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 
 def run_tmux(args: List[str], check: bool = True, capture: bool = False) -> str:
@@ -67,7 +67,7 @@ def apply_order(ordered_sessions: List[Dict[str, object]]) -> None:
         run_tmux(["rename-session", "-t", session["id"], new_name])
 
 
-def current_session_id(client: str | None = None) -> str:
+def current_session_id(client: Optional[str] = None) -> str:
     if not client:
         return run_tmux(["display-message", "-p", "#{session_id}"], capture=True)
 
@@ -86,7 +86,7 @@ def current_session_id(client: str | None = None) -> str:
     return ""
 
 
-def current_window_id(client: str | None = None) -> str:
+def current_window_id(client: Optional[str] = None) -> str:
     if not client:
         return run_tmux(["display-message", "-p", "#{window_id}"], capture=True)
 
@@ -147,7 +147,7 @@ def command_rename(label: str) -> None:
     # run_tmux(["display-message", f"Renamed tmux session to {label}"] , check=False)
 
 
-def command_move(direction: str, client: str | None = None) -> None:
+def command_move(direction: str, client: Optional[str] = None) -> None:
     direction = direction.lower()
     sessions = list_sessions()
     current_id = current_session_id(client)
@@ -175,7 +175,7 @@ def command_created() -> None:
     command_ensure()
 
 
-def command_move_window_to_session(index_str: str, client: str | None = None) -> None:
+def command_move_window_to_session(index_str: str, client: Optional[str] = None) -> None:
     try:
         index = int(index_str)
     except ValueError:
